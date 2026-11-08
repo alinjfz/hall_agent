@@ -1,0 +1,6 @@
+langchain==1.4.9
+langchain-openai==1.7.4
+langsmith==0.14.17
+streamlit==1.67.0
+python-dotenv==1.2.4
+langchain-google-genai==4.4.3
