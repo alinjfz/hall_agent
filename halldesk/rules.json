@@ -6,7 +6,7 @@
     "boundary": "strictly_after",
     "destination": "Facilities duty lead",
     "summary": "Once an open repair is past its recorded target, send it to the facilities duty lead for review. An existing escalation stays on the job.",
-    "source": "HallDesk original workspace policy"
+    "source": "UniHelp original workspace policy"
   },
   {
     "id": "LIGHTING-1",
@@ -16,7 +16,7 @@
     "no_other_lighting": {"priority": "P2", "days": 1, "clock": "confirmed"},
     "clarification_question": "Does any other fixed light work in that same room?",
     "summary": "For fixed room lighting, use P3 with a seven-day target if another fixed light works in the same room. If no fixed light works, use P2 with a 24-hour repair target from the first confirmation. Portable lights and lighting in other rooms do not count. Ask if the state of other fixed lights is unclear. Dark shared escape routes need urgent assessment.",
-    "source": "HallDesk original workspace policy"
+    "source": "UniHelp original workspace policy"
   },
   {
     "id": "HEATING-1",
@@ -24,7 +24,7 @@
     "topic": "heating",
     "target": {"priority": "P2", "days": 2},
     "summary": "Create a heating repair proposal with a two-day target for a verified heating fault. Suspected gas or carbon monoxide hazards go to manual review.",
-    "source": "HallDesk fictional demo policy"
+    "source": "UniHelp fictional demo policy"
   },
   {
     "id": "APPLIANCE-1",
@@ -32,14 +32,14 @@
     "topic": "appliance",
     "target": {"priority": "P3", "days": 7},
     "summary": "Create an appliance repair proposal with a seven-day target for a verified appliance fault. Suspected hazards go to manual review.",
-    "source": "HallDesk fictional demo policy"
+    "source": "UniHelp fictional demo policy"
   },
   {
     "id": "ACCESS-1",
     "revision": 2,
     "topic": "access",
     "summary": "An active lockout requires urgent contact with on-duty residence staff. Staff help restore access as soon as possible after checking identity and access rights. A spare or replacement key is routine if access is available. Treat an identifiable lost or stolen key or a door that will not secure or open from inside as urgent. Ask whether the resident can get in now if unclear.",
-    "source": "HallDesk fictional demo policy",
+    "source": "UniHelp fictional demo policy",
     "destination": "On-duty residence staff",
     "lockout_reply": "Contact residence reception or the on-duty residence staff now. Use your residence’s published out-of-hours contact if reception is closed. Staff can help you regain access as soon as possible after checking your identity and access rights."
   },
@@ -48,14 +48,14 @@
     "revision": 2,
     "topic": "multiple",
     "summary": "Route any urgent issue immediately. Keep the original report and let the reviewer separate the remaining issues at the verified location for their own triage. Each issue gets its own review.",
-    "source": "HallDesk fictional demo policy"
+    "source": "UniHelp fictional demo policy"
   },
   {
     "id": "DUPLICATE-1",
     "revision": 2,
     "topic": "duplicate",
     "summary": "Use the same verified location and fitting to identify an existing open job. Surface its job number, existing target and the resident’s new evidence for review. Reassess urgency based on the current condition and block a duplicate repair.",
-    "source": "HallDesk workspace policy"
+    "source": "UniHelp workspace policy"
   },
   {
     "id": "URGENT-1",
@@ -86,7 +86,7 @@
     "revision": 3,
     "topic": "review",
     "summary": "Ask one targeted question when a missing fact changes the route. If it cannot be confirmed, or the report is contradictory, unsupported or could not be interpreted, send it to the residence duty reviewer with the original report and reason. Hold any repair action for staff review.",
-    "source": "HallDesk original workspace policy",
+    "source": "UniHelp original workspace policy",
     "destination": "Residence duty reviewer"
   },
   {

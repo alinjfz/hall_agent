@@ -68,17 +68,37 @@ def message_key(message):
     return " ".join(message.casefold().split())
 
 
+STOP = {"a", "an", "and", "can", "has", "have", "i", "in", "is", "it", "keeps", "my", "of",
+        "on", "please", "the", "this", "to", "was", "will", "with"}
+SYNONYMS = {"faucet": "tap", "dripping": "drip", "drips": "drip", "bulb": "light",
+            "broken": "failed", "stopped": "failed", "broke": "failed", "fix": "repair",
+            "bedroom": "room", "radiators": "radiator"}
+
+
+def normalized_terms(message):
+    from halldesk.retrieval import tokenize
+    return {SYNONYMS.get(term, term) for term in tokenize(message) if term not in STOP}
+
+
+def similar_messages(message, others):
+    from halldesk.retrieval import BM25
+    terms = normalized_terms(message)
+    documents = {i: normalized_terms(text) for i, text in enumerate(others)}
+    if any(message_key(message) == message_key(text) for text in others):
+        return True
+    index = BM25({key: " ".join(sorted(words)) for key, words in documents.items()})
+    return any(
+        len(terms & documents[key]) / len(terms | documents[key]) >= 0.82
+        for key, _ in index.search(" ".join(sorted(terms)), len(documents))
+    )
+
+
 def relevant_examples(examples, message):
-    words = set(re.findall(r"[a-z]{4,}", message.casefold()))
-    ranked = []
-    for example in examples:
-        previous = example["snapshot"]["message"]
-        if message_key(previous) == message_key(message):
-            continue
-        overlap = words.intersection(re.findall(r"[a-z]{4,}", previous.casefold()))
-        if len(overlap) >= 2:
-            ranked.append((len(overlap), example))
-    ranked.sort(key=lambda item: (-item[0], -item[1]["id"]))
-    return [{"id": example["id"], "report": example["snapshot"]["message"][:500],
-             "expected_handoff": example["expected"]["kind"]}
-            for _, example in ranked[:3]]
+    from halldesk.retrieval import BM25
+    eligible = {row["id"]: row for row in examples
+                if not similar_messages(message, [row["snapshot"]["message"]])}
+    documents = {key: " ".join(sorted(normalized_terms(row["snapshot"]["message"])))
+                 for key, row in eligible.items()}
+    terms = normalized_terms(message)
+    ranked = BM25(documents).search(" ".join(sorted(terms)), len(documents))
+    return [eligible[key] for key, _ in ranked if len(terms.intersection(documents[key].split())) >= 2][:3]

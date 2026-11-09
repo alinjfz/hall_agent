@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -7,7 +8,7 @@ from unicodedata import category, normalize
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from halldesk.context import REPAIR_CATEGORIES, message_key, same_policy
+from halldesk.context import REPAIR_CATEGORIES, message_key, same_policy, similar_messages
 
 LONDON = ZoneInfo("Europe/London")
 
@@ -67,15 +68,19 @@ class Store:
                 version INTEGER NOT NULL DEFAULT 0, proposal TEXT, result TEXT, trace_id TEXT
             )""")
             columns = {row["name"] for row in db.execute("PRAGMA table_info(reports)")}
-            for column in ("subject", "received_at", "triage_claim", "claim_until", "triage_error", "deleted_at"):
+            for column in ("subject", "received_at", "triage_claim", "claim_until", "triage_error", "deleted_at", "interpretation"):
                 if column not in columns:
                     db.execute(f"ALTER TABLE reports ADD COLUMN {column} TEXT")
+            if "triage_attempts" not in columns:
+                db.execute("ALTER TABLE reports ADD COLUMN triage_attempts INTEGER NOT NULL DEFAULT 0")
             if "parent_report_id" not in columns:
                 db.execute("ALTER TABLE reports ADD COLUMN parent_report_id INTEGER REFERENCES reports(id)")
             db.execute("""CREATE TABLE IF NOT EXISTS report_activity (
                 id INTEGER PRIMARY KEY, report_id INTEGER NOT NULL REFERENCES reports(id),
                 at TEXT NOT NULL, event TEXT NOT NULL, details TEXT NOT NULL
             )""")
+            if "reviewer_id" not in {row["name"] for row in db.execute("PRAGMA table_info(report_activity)")}:
+                db.execute("ALTER TABLE report_activity ADD COLUMN reviewer_id TEXT NOT NULL DEFAULT 'system'")
             db.execute("""CREATE TABLE IF NOT EXISTS jobs (
                 id INTEGER PRIMARY KEY, location TEXT NOT NULL, fitting TEXT NOT NULL,
                 deadline TEXT NOT NULL, priority TEXT NOT NULL, status TEXT NOT NULL,
@@ -89,16 +94,13 @@ class Store:
                 snapshot TEXT NOT NULL, expected TEXT NOT NULL, notes TEXT NOT NULL,
                 status TEXT NOT NULL CHECK(status IN ('draft','holdout','guidance','retired'))
             )""")
-            db.execute("""UPDATE reports SET location=? || substr(location,11),
-                version=version+CASE WHEN result IS NULL THEN 1 ELSE 0 END,
-                proposal=NULL,
-                result=CASE WHEN json_extract(result, '$.destination')='Northfield Building Manager'
-                    THEN json_set(result, '$.destination', 'Facilities duty lead') ELSE result END,
-                trace_id=CASE WHEN result IS NULL THEN NULL ELSE trace_id END,
-                triage_claim=NULL, claim_until=NULL, triage_error=NULL
-                WHERE location LIKE 'Northfield / %'""", (RESIDENCE,))
-            db.execute("""UPDATE jobs SET location=? || substr(location,11)
-                WHERE location LIKE 'Northfield / %'""", (RESIDENCE,))
+            eval_columns = {row["name"] for row in db.execute("PRAGMA table_info(eval_cases)")}
+            for column in ("interpretation", "policy_revisions", "trace_id"):
+                if column not in eval_columns:
+                    db.execute(f"ALTER TABLE eval_cases ADD COLUMN {column} TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS reports_location ON reports(location)")
+            db.execute("CREATE INDEX IF NOT EXISTS jobs_location_status ON jobs(location, status)")
+            db.execute("CREATE INDEX IF NOT EXISTS report_activity_report ON report_activity(report_id)")
             if not samples or db.execute("SELECT 1 FROM reports LIMIT 1").fetchone():
                 return
             db.execute("INSERT OR IGNORE INTO reports (id,location,message) VALUES (?,?,?)",
@@ -185,12 +187,42 @@ class Store:
             full_location = f"{RESIDENCE} / {location}"
             full_location = next((row["location"] for row in self.read_locations(db)
                                   if row["location"].casefold() == full_location.casefold()), full_location)
+            now = self.clock()
             row = db.execute("""INSERT INTO reports (location,subject,message,received_at) VALUES (?,?,?,?)""",
-                             (full_location, subject,
-                              message, self.clock().isoformat()))
-            return row.lastrowid
+                             (full_location, subject, message, now.isoformat()))
+            report_id = row.lastrowid
+            self.intake_safety(db, report_id, full_location, message, now)
+            return report_id
 
-    def save_eval_draft(self, report, expected, notes):
+    def intake_safety(self, db, report_id, location, message, now):
+        from halldesk.safety import safety_signals
+
+        if not safety_signals(message):
+            return
+        from halldesk.context import retrieve_policy
+        from halldesk.policy import build_proposal
+
+        context = {"policies": retrieve_policy(), "jobs": self.read_jobs(db, location), "examples": [],
+                   "at": now.isoformat()}
+        proposal = build_proposal({"message": message, "location": location}, context, None)
+        db.execute("UPDATE reports SET proposal=?, version=1 WHERE id=?", (json.dumps(proposal), report_id))
+        self.record_activity(db, report_id, "proposal_ready", {"kind": proposal["kind"], "urgency": proposal["urgency"]})
+        self.record_emergency_reply(db, report_id, proposal)
+
+    def record_emergency_reply(self, db, report_id, proposal):
+        if (proposal.get("urgency") == "emergency" and proposal.get("reply")
+                and not db.execute("SELECT 1 FROM report_activity WHERE report_id=? AND event='emergency_reply'",
+                                   (report_id,)).fetchone()):
+            self.record_activity(db, report_id, "emergency_reply",
+                                 {"author": "staff", "body": proposal["reply"], "automatic": True})
+
+    def record_triage_attempt(self, report_id, version):
+        with self.transaction(write=True) as db:
+            db.execute("UPDATE reports SET triage_attempts=triage_attempts+1 WHERE id=? AND version=?",
+                       (report_id, version))
+
+
+    def save_eval_draft(self, report, expected, notes, *, interpretation=None):
         kind = expected.get("kind")
         if kind not in HANDOFFS:
             raise ReviewError("Choose an expected handoff.")
@@ -212,11 +244,33 @@ class Store:
                     or type(expected.get("days")) is not int or not 1 <= expected["days"] <= 90
                     or expected.get("category", "lighting") not in REPAIR_CATEGORIES):
                 raise ReviewError("Choose the expected repair category, priority, and target.")
-            saved = db.execute("""INSERT INTO eval_cases (name,message_key,snapshot,expected,notes,status)
-                VALUES (?,?,?,?,?,'draft') ON CONFLICT(message_key) DO UPDATE SET
-                expected=excluded.expected, notes=excluded.notes WHERE eval_cases.status='draft'""",
+            from halldesk.context import retrieve_policy
+            from halldesk.interpretation import Interpretation
+
+            if interpretation is not None:
+                try:
+                    interpretation = Interpretation.model_validate(interpretation).model_dump()
+                    quotes = [interpretation.get(key) for key in ("evidence", "safety_evidence", "lighting_evidence")]
+                    quotes += interpretation.get("issues") or []
+                    if any(quote and quote not in snapshot["message"] for quote in quotes):
+                        raise ValueError("Corrected evidence must occur in the report.")
+                except ValueError as exc:
+                    raise ReviewError("Enter a valid corrected interpretation.") from exc
+            topic = (expected.get("category", "lighting") if kind == "create" else
+                     {"escalate": "escalation", "draft": "follow_up", "job_question": "escalation",
+                      "lighting_question": "lighting", "plumbing_question": "plumbing",
+                      "access_question": "access", "power_question": "urgent", "split": "multiple"}.get(kind, "review"))
+            policy = retrieve_policy().get(topic) or (report.get("proposal") or {}).get("rule")
+            revisions = {policy["id"]: policy["revision"]} if policy else {}
+            saved = db.execute("""INSERT INTO eval_cases
+                (name,message_key,snapshot,expected,notes,status,interpretation,policy_revisions,trace_id)
+                VALUES (?,?,?,?,?,'draft',?,?,?) ON CONFLICT(message_key) DO UPDATE SET
+                expected=excluded.expected, notes=excluded.notes, interpretation=excluded.interpretation,
+                policy_revisions=excluded.policy_revisions WHERE eval_cases.status='draft'""",
                                (report["subject"] or "Resident report", message_key(report["message"]),
-                                json.dumps(snapshot), json.dumps(expected), notes.strip()))
+                                json.dumps(snapshot), json.dumps(expected), notes.strip(),
+                                json.dumps(interpretation) if interpretation else None,
+                                json.dumps(revisions), report.get("trace_id")))
             if saved.rowcount != 1:
                 raise ReviewError("An approved or retired case already exists for this report text.")
 
@@ -226,13 +280,40 @@ class Store:
                 rows = db.execute("SELECT * FROM eval_cases WHERE status=? ORDER BY id", (status,)).fetchall()
             else:
                 rows = db.execute("SELECT * FROM eval_cases ORDER BY id").fetchall()
-        return [dict(row) | {"snapshot": json.loads(row["snapshot"]),
-                             "expected": json.loads(row["expected"])} for row in rows]
+        return [dict(row) | {key: json.loads(row[key]) if row[key] else None
+                            for key in ("snapshot", "expected", "interpretation", "policy_revisions")}
+                for row in rows]
+
+    def active_guidance(self, policies):
+        if not policies:
+            return []
+        revisions = {rule["id"]: rule["revision"] for rule in policies.values()}
+        cases = self.eval_cases("guidance")
+        stale = [case["id"] for case in cases if any(
+            revisions.get(key) != version for key, version in (case["policy_revisions"] or {}).items())]
+        if stale:
+            with self.transaction(write=True) as db:
+                db.executemany("UPDATE eval_cases SET status='retired' WHERE id=? AND status='guidance'",
+                               [(case_id,) for case_id in stale])
+        return [case for case in cases if case["id"] not in stale and case["interpretation"]]
 
     def decide_eval(self, case_id, status):
         if status not in {"holdout", "guidance", "retired"}:
             raise ReviewError("Choose how to use this case.")
         with self.transaction(write=True) as db:
+            case = db.execute("SELECT * FROM eval_cases WHERE id=?", (case_id,)).fetchone()
+            if not case:
+                raise ReviewError("This case no longer exists.")
+            if status in {"holdout", "guidance"}:
+                if not json.loads(case["expected"]).get("kind"):
+                    raise ReviewError("Label the expected handoff before approving this case.")
+                if status == "guidance" and not (case["interpretation"] and case["notes"].strip()):
+                    raise ReviewError("Add a corrected interpretation and reviewer note before approving guidance.")
+                other = "holdout" if status == "guidance" else "guidance"
+                messages = [json.loads(row["snapshot"])["message"] for row in db.execute(
+                    "SELECT snapshot FROM eval_cases WHERE status=?", (other,))]
+                if similar_messages(json.loads(case["snapshot"])["message"], messages):
+                    raise ReviewError(f"A similar report is already approved as {other}.")
             updated = db.execute("""UPDATE eval_cases SET status=? WHERE id=? AND
                 (status='draft' OR (?='retired' AND status IN ('holdout','guidance')))""",
                                  (status, case_id, status))
@@ -308,16 +389,20 @@ class Store:
             if updated.rowcount != 1:
                 raise ReviewError("Review changed. Reload the report.")
 
-    def record_activity(self, db, report_id, event, details=None, at=None):
-        db.execute("INSERT INTO report_activity (report_id,at,event,details) VALUES (?,?,?,?)",
-                   (report_id, at or self.clock().isoformat(), event, json.dumps(details or {})))
+    @staticmethod
+    def staff_id(reviewer_id=None):
+        return reviewer_id or os.getenv("HALL_REVIEWER_ID") or "staff"
+
+    def record_activity(self, db, report_id, event, details=None, at=None, *, reviewer_id="system"):
+        db.execute("INSERT INTO report_activity (report_id,at,event,details,reviewer_id) VALUES (?,?,?,?,?)",
+                   (report_id, at or self.clock().isoformat(), event, json.dumps(details or {}), reviewer_id))
 
     def activity(self, report_id):
         with self.transaction() as db:
             rows = db.execute("SELECT * FROM report_activity WHERE report_id=? ORDER BY id DESC", (report_id,))
             return [dict(row) | {"details": json.loads(row["details"])} for row in rows]
 
-    def add_ticket_message(self, report_id, author, body, *, draft_version=None, decline=False):
+    def add_ticket_message(self, report_id, author, body, *, draft_version=None, decline=False, reviewer_id=None):
         body = clean_report_text(body)
         if (author not in {"resident", "staff"} or (decline and draft_version is None)
                 or (not decline and not 0 < len(body) <= 4000)):
@@ -339,26 +424,32 @@ class Store:
                 if reviewed:
                     raise ReviewError("This draft has already been reviewed.")
                 event = "reply_declined" if decline else "reply_approved"
+                original_draft = proposal.get("reply") or proposal.get("question")
+                if decline or body != original_draft:
+                    revised = None if decline else proposal | {"reviewer_edits": {"reply": body}}
+                    self.record_eval_draft(db, report, "Reviewer declined or edited the resident reply.", revised)
             self.record_activity(db, report_id, event, {
                 "author": author, "body": "" if decline else body, "version": draft_version,
-            })
+            }, reviewer_id=self.staff_id(reviewer_id) if author == "staff" else "resident")
+
+    @staticmethod
+    def decode_report(row):
+        report = dict(row)
+        for key in ("proposal", "result", "interpretation"):
+            report[key] = json.loads(report[key]) if report[key] else None
+        return report
 
     def reports(self):
         with self.transaction() as db:
             rows = db.execute("SELECT * FROM reports WHERE deleted_at IS NULL ORDER BY id").fetchall()
-        reports = []
-        for row in rows:
-            report = dict(row)
-            for key in ("proposal", "result"):
-                report[key] = json.loads(report[key]) if report[key] else None
-            reports.append(report)
-        return reports
+        return [self.decode_report(row) for row in rows]
 
     def report(self, report_id):
-        report = next((report for report in self.reports() if report["id"] == report_id), None)
-        if report is None:
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM reports WHERE id=? AND deleted_at IS NULL", (report_id,)).fetchone()
+        if row is None:
             raise ReviewError("This report is no longer available.")
-        return report
+        return self.decode_report(row)
 
     def previous_matching_report(self, report):
         key = message_key(report["message"])
@@ -402,12 +493,13 @@ class Store:
             return {row["job_id"]: {"report_id": row["report_id"], "message": row["message"][:500]}
                     for row in rows}
 
-    def save_proposal(self, report, proposal, trace_id=None):
+    def save_proposal(self, report, proposal, trace_id=None, *, reviewer_id=None, interpretation=None):
         with self.transaction(write=True) as db:
             updated = db.execute("""UPDATE reports SET proposal=?, version=version+1, trace_id=COALESCE(?,trace_id),
-                triage_claim=NULL, claim_until=NULL, triage_error=NULL
+                triage_claim=NULL, claim_until=NULL, triage_error=NULL, interpretation=COALESCE(?,interpretation)
                 WHERE id=? AND version=? AND result IS NULL AND triage_claim IS ? AND deleted_at IS NULL""",
-                                 (json.dumps(proposal), trace_id, report["id"], report["version"], report["triage_claim"]))
+                                 (json.dumps(proposal), trace_id, json.dumps(interpretation) if interpretation else None,
+                                  report["id"], report["version"], report["triage_claim"]))
             if updated.rowcount != 1:
                 raise ReviewError("Review changed. Reload the report.")
             self.record_activity(db, report["id"], "proposal_updated" if report["proposal"] else "proposal_ready", {
@@ -418,7 +510,24 @@ class Store:
                 "note": proposal.get("question") or proposal.get("reason"),
                 "days": proposal.get("days"),
                 "reviewer_edits": proposal.get("reviewer_edits"),
-            })
+            }, reviewer_id=self.staff_id(reviewer_id) if report["proposal"] else "system")
+            self.record_emergency_reply(db, report["id"], proposal)
+            if report["proposal"]:
+                self.record_eval_draft(db, report, "Reviewer revised the proposal.", proposal)
+
+    def record_eval_draft(self, db, report, note, revised=None):
+        proposal = json.loads(report["proposal"]) if isinstance(report["proposal"], str) else report["proposal"]
+        if not proposal or not (snapshot := proposal.get("context_snapshot")):
+            return
+        snapshot = snapshot | {"review_change": {"before": proposal["kind"],
+                                                  "after": revised["kind"] if revised else "rejected",
+                                                  "edits": (revised or {}).get("reviewer_edits")}}
+        rule = proposal.get("rule")
+        revisions = {rule["id"]: rule["revision"]} if rule else {}
+        db.execute("""INSERT INTO eval_cases (name,message_key,snapshot,expected,notes,status,policy_revisions,trace_id)
+            VALUES (?,?,?,?,?,'draft',?,?) ON CONFLICT(message_key) DO NOTHING""",
+            (report["subject"] or "Resident report", message_key(report["message"]), json.dumps(snapshot),
+             "{}", note, json.dumps(revisions), report["trace_id"]))
 
     @staticmethod
     def escalate_job(db, report, proposal, now):
@@ -458,7 +567,7 @@ class Store:
             result["reviewer_edits"] = edits
         return result
 
-    def finish(self, report_id, version, decision, load_rule, *, followup=""):
+    def finish(self, report_id, version, decision, load_rule, *, followup="", reviewer_id=None):
         with self.transaction(write=True) as db:
             report = db.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
             if not report or report["deleted_at"] or report["version"] != version:
@@ -470,9 +579,12 @@ class Store:
                 raise ReviewError("This report is already handled.")
             if report["proposal"] is None:
                 raise ReviewError("This report has no current proposal.")
-            proposal = json.loads(report["proposal"])
+            from halldesk.proposals import parse_proposal
+
+            proposal_data = json.loads(report["proposal"])
+            proposal = parse_proposal(proposal_data)
             now = self.clock()
-            urgent_manual = proposal["kind"] == "manual" and bool(proposal.get("urgency"))
+            urgent_manual = proposal.kind == "manual" and bool(proposal.urgency)
             followups = list(dict.fromkeys(line.strip() for line in followup.splitlines() if line.strip()))
             if followups and (
                 decision not in {"acknowledge", "technician_handoff"} or not urgent_manual
@@ -481,14 +593,15 @@ class Store:
                 raise ReviewError("Copy the exact wording for each separate issue from the original report.")
             if decision == "reject":
                 result = {"action": "rejected"}
-            elif decision == "approve" and proposal["kind"] in {"escalate", "create", "split"}:
-                if not same_policy(load_rule(proposal["rule"]["topic"]), proposal["rule"]):
+                self.record_eval_draft(db, report, "Reviewer rejected the proposal.")
+            elif decision == "approve" and proposal.kind in {"escalate", "create", "split"}:
+                if not same_policy(load_rule(proposal.rule.topic), proposal.rule.model_dump(exclude_unset=True)):
                     raise ReviewError("Policy changed. Triage the report again.")
                 action = {"escalate": self.escalate_job, "create": self.create_job,
-                          "split": self.split_report}[proposal["kind"]]
-                result = action(db, report, proposal, now)
-            elif decision == "acknowledge" and proposal["kind"] in {"draft", "manual"}:
-                result = {"action": proposal["kind"]}
+                          "split": self.split_report}[proposal.kind]
+                result = action(db, report, proposal_data, now)
+            elif decision == "acknowledge" and proposal.kind in {"draft", "manual"}:
+                result = {"action": proposal.kind}
             elif decision == "technician_handoff" and urgent_manual:
                 result = {"action": "technician_handoff"}
             else:
@@ -496,19 +609,20 @@ class Store:
             if followups:
                 split = self.split_report(db, report, {"issues": followups}, now)
                 result["report_ids"] = split["report_ids"]
-            result |= {"decision": decision, "version": version, "at": now.isoformat()}
+            reviewer_id = self.staff_id(reviewer_id)
+            result |= {"decision": decision, "version": version, "at": now.isoformat(), "reviewer_id": reviewer_id}
             db.execute("UPDATE reports SET result=? WHERE id=?", (json.dumps(result), report_id))
-            self.record_activity(db, report_id, "review_complete", result, result["at"])
+            self.record_activity(db, report_id, "review_complete", result, result["at"], reviewer_id=reviewer_id)
             return result
 
-    @staticmethod
-    def split_report(db, report, proposal, now):
+    def split_report(self, db, report, proposal, now):
         if db.execute("SELECT 1 FROM reports WHERE parent_report_id=?", (report["id"],)).fetchone():
             raise ReviewError("This report already has separate reports from a previous review.")
-        children = [
-            db.execute("""INSERT INTO reports (location,subject,message,received_at,parent_report_id)
+        children = []
+        for index, issue in enumerate(proposal["issues"], start=1):
+            child = db.execute("""INSERT INTO reports (location,subject,message,received_at,parent_report_id)
                 VALUES (?,?,?,?,?)""", (report["location"], f"Report #{report['id']} · Issue {index}",
                                         issue, report["received_at"] or now.isoformat(), report["id"])).lastrowid
-            for index, issue in enumerate(proposal["issues"], start=1)
-        ]
+            self.intake_safety(db, child, report["location"], issue, now)
+            children.append(child)
         return {"action": "split_report", "report_ids": children}

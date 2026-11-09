@@ -10,6 +10,8 @@ SIGNALS = {
     ),
     "gas": (
         r"\b(?:gas leak|smell(?:s|ing)? (?:of )?gas|carbon monoxide (?:leak|poisoning)|"
+        r"(?:rotten eggs?|sulphur|sulfur)[^.!?;]{0,45}\b(?:gas (?:hob|meter)|boiler|gas supply)|"
+        r"(?:gas (?:hob|meter)|boiler)[^.!?;]{0,45}\b(?:rotten eggs?|sulphur|sulfur)|"
         r"(?:carbon monoxide|CO) alarm (?:is )?(?:going off|sounding|went off))\b"
     ),
     "fire_equipment": (
@@ -21,7 +23,7 @@ SIGNALS = {
         r"\b(?:flood(?:ing|ed)|burst pipe|water (?:is )?(?:pouring|spreading|(?:coming|leaking|dripping) through (?:the |my )?ceiling)|"
         r"(?:total|complete) power (?:loss|outage|failure)|"
         r"no power (?:anywhere|in (?:the|our|my) (?:whole |entire )?(?:flat|building))|"
-        r"sparks?|sparking|burning (?:smell|odor|odour)|smell(?:s)? (?:of )?burning|exposed wires?|electric shock|"
+        r"sparks?(?![ -]+plug\b)|sparking|(?:outlet|socket|plug)[^.!?;]{0,45}(?:glow\w*|melt\w*)|burning (?:smell|odor|odour)|smell(?:s)? (?:of )?burning|exposed wires?|electric shock|"
         r"ceiling (?:is )?(?:collapsing|caving in)|trapped in (?:a |the )?(?:lift|elevator)|"
         r"water [^.!?;]{0,35}(?:into|onto|through) (?:an? |the )?(?:socket|fuse box|consumer unit|electrical panel)|"
         r"broken glass [^.!?;]{0,25}(?:stairs|corridor|shared hallway))\b"
@@ -54,11 +56,22 @@ def safety_signals(message):
         r"\b(?:staff confirmed|confirmed by staff)\b[^.!?;]{0,35}\bdrill\b"
         r"|\bdrill\b[^.!?;]{0,35}\bconfirmed by staff\b", normalized, re.I
     )
+    resolved = re.search(
+        r"\b(?:staff|maintenance|engineers?)\b[^.!?;]{0,80}\b(?:confirmed|said)\b[^.!?;]{0,45}\bsafe\b",
+        normalized, re.I,
+    )
+    historical = re.compile(r"\b(?:last (?:week|night|month)|yesterday|earlier|previously)\b", re.I)
     signals = set()
     for name, pattern in SIGNALS.items():
         for clause in clauses:
             for match in re.finditer(pattern, clause, re.I):
                 if name == "fire" and confirmed_drill and "alarm" in match.group().lower():
+                    continue
+                start = normalized.find(clause)
+                if (resolved and start < resolved.start() <= start + len(clause) + 80
+                        and historical.search(clause)) and not re.search(
+                    r"\b(?:now|again|still|currently)\b", clause, re.I
+                ):
                     continue
                 prefix = clause[:match.start()]
                 if not re.search(r"\b(?:no|not|never|without)\s+(?:(?:any|a|an|signs? of|currently)\s+)*$", prefix, re.I):

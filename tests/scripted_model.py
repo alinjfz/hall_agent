@@ -3,11 +3,18 @@ from time import monotonic, sleep
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableLambda
 
 
 class ScriptedModel(GenericFakeChatModel):
-    def bind_tools(self, tools, **kwargs):
-        return self
+    def with_structured_output(self, schema, *, include_raw=False, tools=None, **kwargs):
+        async def answer(messages):
+            raw = await self.ainvoke(messages)
+            if raw.tool_calls and raw.tool_calls[0]["name"] == schema.__name__:
+                parsed = schema.model_validate(raw.tool_calls[0]["args"])
+                return {"raw": None, "parsed": parsed} if include_raw else parsed
+            return {"raw": raw, "parsed": None}
+        return RunnableLambda(answer)
 
 
 def wait_for_triage(ui, store, *report_ids):
@@ -26,7 +33,7 @@ def scripted(location, topic, interpretation):
     if interpretation.get("intent") == "new":
         interpretation.setdefault("category", topic)
     policy = AIMessage(content="", tool_calls=[
-        {"name": "search_rules", "args": {"topic": topic}, "id": "policy"},
+        {"name": "search_policy", "args": {"query": topic}, "id": "policy"},
     ])
     answer = AIMessage(content="", tool_calls=[
         {"name": "Interpretation", "args": interpretation, "id": "interpret"},

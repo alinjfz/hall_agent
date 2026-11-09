@@ -1,0 +1,393 @@
+{
+  "suite": "curated",
+  "provider": "lmstudio",
+  "model": "qwen/qwen3.5-9b",
+  "passes": "single",
+  "repetitions": 3,
+  "dataset": "unihelp-curated",
+  "dataset_version": null,
+  "guidance_examples": 1,
+  "dataset_sha256": "0fd55a2f30383881cde85aa87407b7f65b630b8e30c9dc4d8df3fc51c3744230",
+  "experiment_url": null,
+  "slices": {
+    "curated": {
+      "cases": 1,
+      "mean_pass_rate": 0,
+      "worst_case_pass_rate": 0,
+      "best_case_pass_rate": 0
+    }
+  },
+  "safety": {
+    "live": {
+      "misses": 0,
+      "false_alarms": 0
+    },
+    "intake": {
+      "misses": 0,
+      "false_alarms": 0
+    }
+  },
+  "retrieval_recall_at_3": 1.0,
+  "results": [
+    {
+      "case": "contained-shower-drip",
+      "slice": "curated",
+      "expected": {
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14
+      },
+      "actual": {
+        "route": "create",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [
+          "water-leaks",
+          "contacting-staff"
+        ],
+        "guidance_ids": [
+          1
+        ],
+        "expected_sections": [
+          "water-leaks"
+        ],
+        "sections": [
+          {
+            "id": "water-leaks",
+            "title": "Water leaks",
+            "text": "Tell staff whether a tap or shower is only dripping into its fitting or whether water is spreading. A contained drip has a P3, 14 day target. Uncontrolled water, a ceiling leak or water reaching an electrical fitting needs urgent staff assessment."
+          },
+          {
+            "id": "contacting-staff",
+            "title": "Contacting staff and raising complaints",
+            "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+          }
+        ],
+        "reply": "Please tell staff whether the shower is only dripping into its fitting or if water is spreading. Since there is no puddle outside, this appears to be a contained drip, which has a 14-day target.",
+        "reply_sources": [
+          "water-leaks"
+        ],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "dripping water",
+          "shower",
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "dripping water",
+          "shower"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "search_policy",
+              "topic": null,
+              "query": "shower dripping maintenance policy",
+              "on_topic": true
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_policy",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "RunnableSequence",
+            "ChatOpenAI",
+            "_check_refusal",
+            "RunnableLambda",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c233-9c12-7aa3-98b2-1be385c674b4",
+        "latency_ms": 11134
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": null,
+        "category": true,
+        "priority_deadline": true,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": false,
+        "model_completed": true,
+        "reply_grounded": true
+      },
+      "error": false
+    },
+    {
+      "case": "contained-shower-drip",
+      "slice": "curated",
+      "expected": {
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14
+      },
+      "actual": {
+        "route": "create",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [
+          "water-leaks",
+          "contacting-staff"
+        ],
+        "guidance_ids": [
+          1
+        ],
+        "expected_sections": [
+          "water-leaks"
+        ],
+        "sections": [
+          {
+            "id": "water-leaks",
+            "title": "Water leaks",
+            "text": "Tell staff whether a tap or shower is only dripping into its fitting or whether water is spreading. A contained drip has a P3, 14 day target. Uncontrolled water, a ceiling leak or water reaching an electrical fitting needs urgent staff assessment."
+          },
+          {
+            "id": "contacting-staff",
+            "title": "Contacting staff and raising complaints",
+            "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+          }
+        ],
+        "reply": "Please tell staff whether the shower is only dripping into its fitting or if water is spreading. Since there is no puddle outside, this appears to be a contained drip, which has a 14-day target.",
+        "reply_sources": [
+          "water-leaks"
+        ],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "dripping water",
+          "shower",
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "dripping water",
+          "shower"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "search_policy",
+              "topic": null,
+              "query": "shower dripping maintenance policy",
+              "on_topic": true
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_policy",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "RunnableSequence",
+            "ChatOpenAI",
+            "_check_refusal",
+            "RunnableLambda",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c233-c794-7133-a510-858c2836df91",
+        "latency_ms": 8679
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": null,
+        "category": true,
+        "priority_deadline": true,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": false,
+        "model_completed": true,
+        "reply_grounded": true
+      },
+      "error": false
+    },
+    {
+      "case": "contained-shower-drip",
+      "slice": "curated",
+      "expected": {
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14
+      },
+      "actual": {
+        "route": "create",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [
+          "water-leaks",
+          "contacting-staff"
+        ],
+        "guidance_ids": [
+          1
+        ],
+        "expected_sections": [
+          "water-leaks"
+        ],
+        "sections": [
+          {
+            "id": "water-leaks",
+            "title": "Water leaks",
+            "text": "Tell staff whether a tap or shower is only dripping into its fitting or whether water is spreading. A contained drip has a P3, 14 day target. Uncontrolled water, a ceiling leak or water reaching an electrical fitting needs urgent staff assessment."
+          },
+          {
+            "id": "contacting-staff",
+            "title": "Contacting staff and raising complaints",
+            "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+          }
+        ],
+        "reply": "Please tell staff whether the shower is only dripping into its fitting or if water is spreading. Since there is no puddle outside, this appears to be a contained drip, which has a 14-day target.",
+        "reply_sources": [
+          "water-leaks"
+        ],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "dripping water",
+          "shower",
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "dripping water",
+          "shower"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "search_policy",
+              "topic": null,
+              "query": "shower dripping maintenance policy",
+              "on_topic": true
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_policy",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "RunnableSequence",
+            "ChatOpenAI",
+            "_check_refusal",
+            "RunnableLambda",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c233-e984-78f2-a7d3-e8943e4fdab4",
+        "latency_ms": 8784
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": null,
+        "category": true,
+        "priority_deadline": true,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": false,
+        "model_completed": true,
+        "reply_grounded": true
+      },
+      "error": false
+    }
+  ]
+}

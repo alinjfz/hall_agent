@@ -1,0 +1,748 @@
+[
+  {
+    "id": "fire-01",
+    "slice": "hazard",
+    "inputs": {
+      "message": "I opened the microwave and a sheet of flame shot out.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-02",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The tea towel has caught alight and it is catching the cupboards.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-03",
+    "slice": "hazard",
+    "inputs": {
+      "message": "A black cloud is billowing under the laundry door and it smells acrid.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-04",
+    "slice": "hazard",
+    "inputs": {
+      "message": "I can see the carpet catching light from the heater.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-05",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The waste bin is ablaze beside the entrance.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-06",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The hallway is filling with thick grey fumes from something burning.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "gas-01",
+    "slice": "hazard",
+    "inputs": {
+      "message": "There's a strong rotten cabbage odour coming from the boiler cupboard.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "gas"
+    ]
+  },
+  {
+    "id": "gas-02",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The hob knob was left turned on without a flame and I can hear it hissing.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "gas"
+    ]
+  },
+  {
+    "id": "gas-03",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The pilot went out and the room now has the same sulphur smell as the gas supply.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "gas"
+    ]
+  },
+  {
+    "id": "gas-04",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The detector marked CO is screaming and both of us have headaches.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "gas"
+    ]
+  },
+  {
+    "id": "gas-05",
+    "slice": "hazard",
+    "inputs": {
+      "message": "My carbon monoxide monitor reads 150 ppm and hasn't stopped screaming.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "gas"
+    ]
+  },
+  {
+    "id": "gas-06",
+    "slice": "hazard",
+    "inputs": {
+      "message": "It smells like rotten eggs around the meter and the smell is getting stronger.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "gas"
+    ]
+  },
+  {
+    "id": "urgent-01",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The bath overflowed and the water has reached the next room.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-02",
+    "slice": "hazard",
+    "inputs": {
+      "message": "My feet are under water in the kitchen and the level keeps rising.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-03",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The outlet cover is hot enough to melt and the face is glowing red.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-04",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The washing machine casing gives me a jolt every time I touch it.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-05",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The entire block went dead; every outlet and light is off.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-06",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The lift stopped between floors and there are people shouting from inside.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-07",
+    "slice": "hazard",
+    "inputs": {
+      "message": "A slab of plaster above my bed has sagged down and is dropping chunks.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-08",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The breaker box is getting wet from a leak above it.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-09",
+    "slice": "hazard",
+    "inputs": {
+      "message": "Every stair lamp is dead and you can't see a step when you go down.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-10",
+    "slice": "hazard",
+    "inputs": {
+      "message": "There are shards from a shattered pane covering the communal stairs.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-11",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The extension lead is crackling and the plug is turning black.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "urgent-12",
+    "slice": "hazard",
+    "inputs": {
+      "message": "Water is running out from beneath the bathroom door and down the stairs.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "urgent"
+    ]
+  },
+  {
+    "id": "access-01",
+    "slice": "hazard",
+    "inputs": {
+      "message": "I'm standing on the landing with no key and nobody can open my room.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "access"
+    ]
+  },
+  {
+    "id": "access-02",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The handle spins freely and I am stuck in my room.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "access"
+    ]
+  },
+  {
+    "id": "access-03",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The lock bolt never catches; the entrance opens when pushed from the street.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "access"
+    ]
+  },
+  {
+    "id": "access-04",
+    "slice": "hazard",
+    "inputs": {
+      "message": "My key has gone missing with the flat number printed on its plastic tab.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "access"
+    ]
+  },
+  {
+    "id": "access-05",
+    "slice": "hazard",
+    "inputs": {
+      "message": "I have no way into my flat tonight since my key card was deactivated.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "access"
+    ]
+  },
+  {
+    "id": "access-06",
+    "slice": "hazard",
+    "inputs": {
+      "message": "Our bedroom handle snapped and neither of us can leave the room.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "access"
+    ]
+  },
+  {
+    "id": "fire-equipment-01",
+    "slice": "hazard",
+    "inputs": {
+      "message": "Someone stacked six desks in front of the marked fire escape and you can't reach it.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-equipment-02",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The fire door was propped open with a brick and won't close on its own.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-equipment-03",
+    "slice": "hazard",
+    "inputs": {
+      "message": "The emergency exit sign and backup lamp on our escape route no longer illuminate.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-equipment-04",
+    "slice": "hazard",
+    "inputs": {
+      "message": "A resident put a plastic bag over the corridor smoke detector; it's still there.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "urgent",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "lookalike-01",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The spark plug in my bicycle tool kit is missing.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-02",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The photo on the noticeboard shows flames from last month's training session.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-03",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "A gas leak last week was repaired, and staff confirmed the room is safe.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-04",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "I'm already safely in my flat and I'd like to order an extra key.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-05",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The tap drips into the sink; the floor and cupboard are dry.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-06",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The bedside lamp stopped working; every fixed light in the room works.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-07",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "Can you explain what to do if I smell gas in the future? There is no smell now.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-08",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The fire alarm rang at the announced drill and staff confirmed the exercise has finished.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-09",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The bulb in the oven is out but the rest of the kitchen has power.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-10",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The wiring diagram says 'exposed wires' as a warning; I have not seen any in the room.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-11",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The lift was stuck yesterday; staff restored it and nobody is inside.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "lookalike-12",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "The plug looks orange because the entire casing was manufactured that colour. It is cool and works.",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null
+    },
+    "policy_topics": []
+  }
+]

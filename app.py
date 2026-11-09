@@ -1,8 +1,9 @@
+import json
 import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -10,9 +11,10 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from halldesk.context import REPAIR_CATEGORIES, retrieve_policy
+from halldesk.proposals import parse_proposal
 from halldesk.models import configured_provider, model_id, setup_issue
 from halldesk.store import HANDOFFS, LABELS, LONDON, RESIDENCE, ReviewError, Store, is_overdue
-from halldesk.workflow import process_pending, review, revise
+from halldesk.workflow import process_pending, review, review_reply, revise
 
 load_dotenv()
 st.set_page_config(page_title="UniHelp", page_icon=":material/mail:", layout="wide")
@@ -171,7 +173,7 @@ def show_review(report, reports):
 
     with st.container(border=True):
         st.caption("PROPOSED HANDOFF · INTERNAL REVIEW")
-        kind = proposal["kind"]
+        kind = parse_proposal(proposal).kind
         if kind == "escalate":
             st.markdown(f"#### Escalate to {proposal['rule']['destination']}")
         elif kind == "draft":
@@ -411,6 +413,7 @@ def show_policy():
 
 def show_evals():
     st.subheader("Quality checks")
+    store.active_guidance(retrieve_policy())
     cases = store.eval_cases()
     if not cases:
         st.info("No test cases yet. To create one, open a report and choose Report actions → Save as quality check.")
@@ -456,13 +459,17 @@ def label_report(report):
         expected["priority"] = st.selectbox("Expected priority", ["P2", "P3"], index=None)
         expected["days"] = st.number_input("Expected target in days", min_value=1, max_value=90)
     notes = st.text_area("Reviewer notes", max_chars=1200, key=f"eval-notes-{report['id']}")
+    with st.expander("Corrected interpretation (for guidance examples)"):
+        corrected = st.text_area("Corrected interpretation JSON", key=f"eval-interpretation-{report['id']}",
+                                 help="Enter the evidence, intent and facts that the agent should have extracted.")
     if st.button("Save draft", disabled=not kind or (kind == "create" and not expected["priority"])):
         try:
-            store.save_eval_draft(report, expected, notes)
+            interpretation = json.loads(corrected) if corrected.strip() else None
+            store.save_eval_draft(report, expected, notes, interpretation=interpretation)
             close_report_dialog()
             st.toast("Draft saved. Open Quality checks to choose how to use it.")
             st.rerun()
-        except ReviewError as exc:
+        except (ReviewError, ValueError) as exc:
             st.error(str(exc))
 
 
@@ -472,7 +479,7 @@ def show_conversation(report, events):
     messages = [{"author": "resident", "body": report["message"], "at": report["received_at"]}]
     messages.extend(
         event["details"] | {"at": event["at"]} for event in reversed(events)
-        if event["event"] in {"conversation_message", "reply_approved"}
+        if event["event"] in {"conversation_message", "reply_approved", "emergency_reply"}
     )
     for index, message in enumerate(messages):
         resident = message["author"] == "resident"
@@ -502,6 +509,8 @@ def show_conversation(report, events):
     if not draft or (report["result"] or {}).get("decision") == "reject":
         return
     version = report["version"]
+    if any(event["event"] == "emergency_reply" for event in events):
+        return
     if any(event["event"] in {"reply_approved", "reply_declined"}
            and event["details"]["version"] == version for event in events):
         return
@@ -515,7 +524,7 @@ def show_conversation(report, events):
                 decline = st.form_submit_button("Decline draft", help="Records the decision without posting a reply.")
             if approve or decline:
                 try:
-                    store.add_ticket_message(report_id, "staff", reply, draft_version=version, decline=decline)
+                    review_reply(store, report_id, version, reply, decline=decline)
                     st.rerun()
                 except ReviewError as exc:
                     st.error(str(exc))
@@ -546,10 +555,13 @@ def show_activity(report, events):
                 "received": "Report received", "triage_started": "Agent started reviewing",
                 "triage_failed": "Agent could not complete the review", "requeued": "Returned to the queue",
                 "reply_approved": "Proposed reply approved and posted",
+                "emergency_reply": "Emergency guidance posted automatically",
                 "reply_declined": "Proposed reply declined",
                 "conversation_message": "Resident follow-up recorded" if details.get("author") == "resident" else "Staff reply recorded",
             }[name]
         notes = []
+        if (actor := event.get("reviewer_id")) and actor not in {"system", "resident"}:
+            notes.append(f"Reviewer: {actor}")
         if job_id := details.get("job_id"):
             notes.append(f"Job #{job_id}")
         if destination := details.get("destination"):
@@ -686,6 +698,13 @@ else:
             and matches_date(r["received_at"], dates)
         }
 
+        review_now = store.clock()
+        urgent_review_after = timedelta(minutes=15)
+
+        def awaiting_urgent_review(report):
+            return (status(report) in {"Emergency", "Urgent"} and report["received_at"]
+                    and review_now - datetime.fromisoformat(report["received_at"]) >= urgent_review_after)
+
         def mail_row(report_id):
             report = reports[report_id]
             subject = markdown_text(report["subject"] or "Resident report")
@@ -693,10 +712,16 @@ else:
             preview = markdown_text(message[:76].rstrip() + "..." if len(message) > 76 else message)
             state = status(report)
             color = BADGE_COLORS.get(state, "gray")
-            return f"**{subject}** `#{report_id}`  \n*{preview}*  \n:{color}-badge[{state}]"
+            waiting = " · Awaiting review over 15 min" if awaiting_urgent_review(report) else ""
+            return f"**{subject}** `#{report_id}`  \n*{preview}*  \n:{color}-badge[{state}]{waiting}"
 
         rank = {"Emergency": 0, "Urgent": 1}
-        reports = dict(sorted(reports.items(), key=lambda row: rank.get(status(row[1]), 2)))
+        reports = dict(sorted(reports.items(), key=lambda row: (
+            rank.get(status(row[1]), 2),
+            (datetime.fromisoformat(row[1]["received_at"]).timestamp() if row[1]["received_at"] else float("inf"))
+            if folder == "Needs review" or status(row[1]) in rank else 0,
+            row[0],
+        )))
         if st.session_state.get("message-list") not in reports:
             st.session_state["message-list"] = next(iter(reports), None)
         with st.container(key="report-rows", height=420, border=False):

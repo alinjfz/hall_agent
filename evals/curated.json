@@ -1,0 +1,59 @@
+{
+  "cases": [
+    {
+      "id": "contained-shower-drip",
+      "slice": "curated",
+      "inputs": {
+        "message": "The bathroom shower keeps dripping into the tray even when it is turned off. There is no puddle outside.",
+        "location": "Juniper Court / Flat 39",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14
+      },
+      "policy_topics": [
+        "plumbing"
+      ],
+      "policy_sections": [
+        "water-leaks"
+      ],
+      "policy_revisions": {
+        "PLUMBING-1": 3
+      }
+    }
+  ],
+  "guidance": [
+    {
+      "id": 1,
+      "name": "Contained shower drip",
+      "message_key": "the shower is dripping into the tray. the bathroom floor is completely dry.",
+      "snapshot": {
+        "at": "2026-11-08T12:00:00+00:00",
+        "location": "Juniper Court / Flat 38",
+        "message": "The shower is dripping into the tray. The bathroom floor is completely dry.",
+        "jobs": []
+      },
+      "expected": {
+        "kind": "create",
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14
+      },
+      "notes": "A drip into the tray with a dry bathroom floor is a contained shower drip. Quote the first sentence and identify the shower as the fitting.",
+      "interpretation": {
+        "intent": "new",
+        "category": "plumbing",
+        "fitting": "shower",
+        "evidence": "The shower is dripping into the tray."
+      },
+      "policy_revisions": {
+        "PLUMBING-1": 3
+      }
+    }
+  ]
+}

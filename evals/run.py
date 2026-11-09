@@ -1,401 +1,452 @@
+"""Run reproducible live experiments against the production triage entry point."""
+
 import argparse
+import inspect
 import json
-import logging
 import os
-import sys
-from datetime import datetime, timedelta, timezone
+from collections import Counter, defaultdict
+from contextlib import nullcontext
+from contextvars import ContextVar
+from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from statistics import median
+from statistics import mean
 from tempfile import TemporaryDirectory
+from threading import Lock
 from time import perf_counter
 from uuid import NAMESPACE_URL, uuid5
 
 from dotenv import load_dotenv
-from langsmith import Client, traceable, tracing_context
-from langsmith.schemas import Example
+from langchain_core.tracers.base import BaseTracer
+from langchain_core.tracers.context import register_configure_hook
 from langchain_core.tracers.langchain import wait_for_all_tracers
+from langsmith import Client, trace, tracing_context
+from langsmith.schemas import Example
 
-from evals.judge import judge_clarification, judge_model_id
+from evals import evaluators
 from halldesk.models import configured_provider, model_id, setup_issue
+from halldesk.safety import safety_signals
 from halldesk.store import Store
-from halldesk.workflow import review, revise, triage
-from tests.scripted_model import scripted
+from halldesk.workflow import triage
 
-NOW = datetime(2026, 11, 8, 12, tzinfo=timezone.utc)
-
-
-CLARIFICATION_FACTS = {
-    "plumbing_question": "Whether the tap or shower is only dripping or water is spreading",
-    "job_question": "Which fitting or job the resident is following up on",
-    "lighting_question": "Whether another light works in the same room",
-}
+HERE = Path(__file__).resolve().parent
+DATASET_NAMES = {"triage": "unihelp-triage", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
+REPETITIONS = 3
 
 
-def prepare_case(store, case):
-    snapshot = case.get("snapshot")
-    store.seed(samples=snapshot is None)
+class LocalTraceClient(Client):
+    """Capture the local run tree without posting callback events."""
+
+    def create_run(self, *args, **kwargs):
+        return None
+
+    def update_run(self, *args, **kwargs):
+        return None
+
+
+def local_trace_client():
+    return LocalTraceClient(api_url="http://127.0.0.1:1", api_key="local", auto_batch_tracing=False, info={})
+
+
+def load_cases(suite):
+    path = HERE / ("dataset.json" if suite == "triage" else "safety_holdout.json")
+    return json.loads(path.read_text())
+
+
+def prepare(store, inputs, guidance=()):
+    store.seed(samples=False)
     with store.transaction(write=True) as db:
-        if snapshot:
-            report_id = db.execute("""INSERT INTO reports (location,message,subject,received_at)
-                VALUES (?,?,?,?)""", (snapshot["location"], snapshot["message"],
-                                     case["name"], snapshot["at"])).lastrowid
-            job_reports = snapshot.get("job_reports", {})
-            for job in snapshot["jobs"]:
-                original = job_reports.get(str(job["id"]))
-                source_id = None
-                if original:
-                    source_id = db.execute("INSERT INTO reports (location,message) VALUES (?,?)",
-                                           (job["location"], original["message"])).lastrowid
-                db.execute("""INSERT INTO jobs (id,location,fitting,deadline,priority,status,category,labels,
-                    escalated_at,created_from)
-                    VALUES (:id,:location,:fitting,:deadline,:priority,:status,:category,:labels,
-                    :escalated_at,:created_from)""",
-                           job | {"labels": json.dumps(job["labels"]), "created_from": source_id})
-            db.executemany("""INSERT INTO eval_cases (id,name,message_key,snapshot,expected,notes,status)
-                VALUES (?,?,?,?,?,?,'guidance')""", [
-                (row["id"], row["name"], row["message_key"], json.dumps(row["snapshot"]),
-                 json.dumps(row["expected"]), row["notes"]) for row in case.get("guidance", [])
+        report_id = db.execute("INSERT INTO reports (location,message,received_at) VALUES (?,?,?)",
+                               (inputs["location"], inputs["message"], inputs["clock"])).lastrowid
+        for job in inputs["open_jobs"]:
+            original = inputs.get("job_reports", {}).get(str(job["id"]))
+            source_id = (db.execute("INSERT INTO reports (location,message,deleted_at) VALUES (?,?,?)",
+                                    (job["location"], original["message"], inputs["clock"])).lastrowid
+                         if original else None)
+            db.execute("""INSERT INTO jobs
+                          (id,location,fitting,deadline,priority,status,category,labels,escalated_at,created_from,assignee)
+                          VALUES (:id,:location,:fitting,:deadline,:priority,:status,:category,:labels,:escalated_at,
+                                  :created_from,:assignee)""",
+                       job | {"labels": json.dumps(job["labels"]), "created_from": source_id,
+                              "assignee": job.get("assignee")})
+        if guidance:
+            db.executemany("""INSERT INTO eval_cases
+                (id,name,message_key,snapshot,expected,notes,status,interpretation,policy_revisions)
+                VALUES (?,?,?,?,?,?,'guidance',?,?)""", [
+                (row["id"], row["name"], row["message_key"], json.dumps(row["snapshot"]), json.dumps(row["expected"]),
+                 row["notes"], json.dumps(row["interpretation"]), json.dumps(row["policy_revisions"]))
+                for row in guidance
             ])
-            return report_id
-        if "message" in case:
-            db.execute("UPDATE reports SET message=? WHERE id=?", (case["message"], case["report"]))
-        if case.get("boundary"):
-            db.execute("UPDATE jobs SET deadline=? WHERE id=101", (NOW.isoformat(),))
-        if case.get("job_state") == "closed":
-            db.execute("UPDATE jobs SET status='closed' WHERE id=101")
-        if case.get("job_state") == "escalated":
-            db.execute("UPDATE jobs SET escalated_at=? WHERE id=101", (NOW.isoformat(),))
-    return case["report"]
+    return report_id
 
 
-@traceable(name="evaluate_case", process_inputs=lambda inputs: {"case": inputs["case"]["name"]})
-def evaluate(case, live, use_judge, passes="full"):
+def descendants(run):
+    for child in sorted(run.child_runs, key=lambda node: node.dotted_order):
+        yield child
+        yield from descendants(child)
+
+
+def read_trace(run, topics, expected_sections, location, provider_calls):
+    runs = sorted(descendants(run), key=lambda node: (node.start_time, node.dotted_order))
+    tools, evidence = [], []
+    for node in runs:
+        if node.run_type == "tool":
+            topic = node.inputs.get("topic") if node.name in {"search_rules", "search_policy"} else None
+            query = node.inputs.get("query")
+            on_topic = topic in topics if topic else None
+            if node.name == "search_policy" and expected_sections:
+                payload = (node.outputs or {}).get("output")
+                if hasattr(payload, "content"):
+                    payload = payload.content
+                if isinstance(payload, dict):
+                    payload = payload.get("content")
+                if isinstance(payload, str):
+                    try:
+                        on_topic = bool({section["id"] for section in json.loads(payload)} & set(expected_sections))
+                    except (TypeError, ValueError, KeyError):
+                        pass
+            if node.name == "get_open_jobs" and node.inputs.get("location"):
+                on_topic = node.inputs["location"].casefold() == location.casefold()
+            tools.append({"name": node.name, "topic": topic, "query": query, "on_topic": on_topic})
+        if node.name == "apply_policy":
+            interpretation = node.inputs.get("interpretation", {})
+            if hasattr(interpretation, "model_dump"):
+                interpretation = interpretation.model_dump()
+            if isinstance(interpretation, dict):
+                evidence.extend(interpretation[key] for key in ("evidence", "lighting_evidence", "safety_evidence")
+                                if interpretation.get(key))
+                evidence.extend(interpretation.get("issues") or [])
+    passes = [node for node in runs if node.name == "interpretation_pass"]
+    state_errors = [node.outputs.get("model_error") for node in runs if node.name == "interpret" and node.outputs]
+    failure = (next((error for error in state_errors if error), "") if state_errors
+               else next((node.error for node in passes if node.error), ""))
+    return {
+        "tools": tools,
+        "steps": [node.name for node in runs],
+        "model_calls": max(provider_calls, sum(node.run_type == "llm" for node in runs)),
+        "failed_interpretation": bool(failure) or bool(passes and not any(node.name == "apply_policy" for node in runs)),
+        "error_kind": ("timeout" if "timeout" in failure.casefold() or "timed out" in failure.casefold()
+                       else "model_error" if failure else None),
+    }, evidence
+
+
+def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model=None, guidance=()):
+    # The baseline mixes LangSmith decorators and LangChain callbacks. Keep a
+    # local LangChain tracer as well so local runs count actual chat model calls.
     with TemporaryDirectory() as directory:
-        snapshot = case.get("snapshot")
-        now = datetime.fromisoformat(snapshot["at"]) if snapshot else NOW
-        store = Store(Path(directory) / "eval.sqlite3", clock=lambda: now)
-        report_id = prepare_case(store, case)
-        report = store.report(report_id)
+        store = Store(Path(directory) / "case.sqlite3", clock=lambda: datetime.fromisoformat(inputs["clock"]))
+        report_id = prepare(store, inputs, guidance)
         before = store.jobs()
-        model = None if live else scripted(report["location"], case["topic"], case["script"])
-        audit = {}
         started = perf_counter()
-        proposal = triage(store, report_id, model=model, passes=passes, audit=audit)
-        latency_ms = round((perf_counter() - started) * 1000)
-        actual = proposal["kind"]
-        checks = {"route": actual == case["kind"], "triage_is_read_only": store.jobs() == before,
-                  "retrieved_policy": bool(proposal["retrieval"]["policies"])}
-        if audit.get("model_error"):
-            checks["model_completed"] = False
-        if "hazard" in case:
-            checks["hazard"] = (proposal.get("urgency") or "none") == case["hazard"]
-        if "urgency" in case:
-            checks["urgency"] = proposal.get("urgency") == case["urgency"]
-        if "reply_contains" in case:
-            checks["reply"] = case["reply_contains"] in proposal.get("reply", "")
-        if "related_jobs" in case:
-            checks["related_jobs"] = [job["id"] for job in proposal.get("related_jobs", [])] == case["related_jobs"]
-        if "job" in case:
-            checks["job"] = proposal.get("job", {}).get("id") == case["job"]
-        if case["kind"] == "create":
-            checks["priority"] = proposal.get("priority") == case["priority"]
-            checks["days"] = proposal.get("days") == case["days"]
-        if "category" in case:
-            checks["category"] = proposal.get("category") == case["category"]
-        if "issues" in case:
-            checks["issues"] = proposal.get("issues") == case["issues"]
-        if "candidates" in case:
-            checks["candidates"] = [job["id"] for job in proposal.get("candidates", [])] == sorted(case["candidates"])
-        if rule_id := case.get("rule_id") or (
-            {"escalation": "OVERDUE-1", "lighting": "LIGHTING-1"}.get(case.get("topic"))
-            if case["kind"] != "manual" else None
-        ):
-            checks["rule"] = proposal.get("rule", {}).get("id") == rule_id
-            checks["expected_policy_retrieved"] = any(
-                rule["id"] == rule_id for rule in proposal["retrieval"]["policies"]
-            )
-        if "duplicate_jobs" in case:
-            checks["duplicate_jobs"] = proposal.get("duplicate_job_ids") == case["duplicate_jobs"]
-        if "reply_source" in case:
-            source = proposal.get("reply_source", {})
-            checks["reply_source"] = source.get("id") == case["reply_source"]
-            checks["grounded_reply"] = bool(source.get("summary") and source["summary"] in proposal.get("reply", ""))
-        score = None
-        if use_judge and case["kind"] in CLARIFICATION_FACTS:
-            choices = [f"#{job['id']} {job['fitting']}" for job in proposal.get("candidates", [])]
-            if actual == "lighting_question":
-                choices = ["Yes, another light works", "No, this was the only working light"]
-            elif actual == "plumbing_question":
-                choices = ["Only dripping", "Water is spreading"]
-            score = judge_clarification(report["message"], CLARIFICATION_FACTS[case["kind"]],
-                                        proposal.get("question"), choices)
-        if "choose" in case and actual == "job_question":
-            proposal = revise(store, report_id, store.report(report_id)["version"], case["choose"])
-            checks["chosen_job"] = proposal.get("job", {}).get("id") == case["choose"]
-        if "answer" in case and actual in {"lighting_question", "plumbing_question"}:
-            proposal = revise(store, report_id, store.report(report_id)["version"], case["answer"])
-            if "priority" in case:
-                checks["clarified_priority"] = proposal.get("priority") == case["priority"]
-        final_kind = case.get("final_kind", "create" if "answer" in case else
-                              "escalate" if "choose" in case else case["kind"])
-        checks["handoff"] = proposal["kind"] == final_kind
-        version = store.report(report_id)["version"]
-        if proposal["kind"] in {"escalate", "create"}:
-            confirmed_at = now
-            if delay := case.get("approval_delay_hours"):
-                now += timedelta(hours=delay)
-            receipt = review(store, report_id, version, "approve")
-            after = store.jobs()
-            replay = review(store, report_id, version, "approve")
-            checks["replay"] = receipt == replay and after == store.jobs()
-            if final_kind == proposal["kind"] == "create":
-                created = next(job for job in after if job["id"] == receipt["job_id"])
-                target_start = confirmed_at if case.get("approval_delay_hours") else now
-                checks["write"] = (len(after) == len(before) + 1 and created["created_from"] == report_id
-                                   and created["priority"] == case["priority"]
-                                   and created["category"] == proposal.get("category", "lighting")
-                                   and created["deadline"] == (target_start + timedelta(days=case["days"])).isoformat())
-            elif final_kind == proposal["kind"] == "escalate":
-                changed = [job for old, job in zip(before, after) if old != job and job["escalated_at"]]
-                checks["write"] = (len(after) == len(before) and len(changed) == 1
-                                   and changed[0]["id"] == case.get("choose", case.get("job")))
-            else:
-                checks["write"] = False
-        elif actual == final_kind == "split":
-            receipt = review(store, report_id, version, "approve")
-            children = [row for row in store.reports() if row["parent_report_id"] == report_id]
-            checks["child_reports"] = (
-                [row["id"] for row in children] == receipt["report_ids"]
-                and [row["message"] for row in children] == proposal["issues"]
-                and all(row["location"] == report["location"] and not row["proposal"] for row in children)
-            )
-            checks["replay"] = (review(store, report_id, version, "approve") == receipt
-                                and [row for row in store.reports() if row["parent_report_id"] == report_id] == children)
-            checks["write"] = store.jobs() == before
-        else:
-            if (followup := case.get("followup")) and actual == final_kind == "manual":
-                receipt = review(store, report_id, version, "acknowledge", followup=followup)
-                children = [row for row in store.reports() if row["parent_report_id"] == report_id]
-                checks["followup"] = (
-                    len(children) == 1 and children[0]["message"] == followup
-                    and children[0]["location"] == report["location"]
-                    and receipt["report_ids"] == [children[0]["id"]]
-                )
-            checks["write"] = store.jobs() == before
-        interpretation = audit.get("interpretation", {})
-        evidence = interpretation.get("evidence")
-        requested_topics = audit.get("requested_policy_topics", [])
-        relevant_topics = {case.get("topic")}
-        if case.get("topic") == "escalation":
-            relevant_topics.add("follow_up")
-        diagnostics = {
-            "model_candidates_correct": (set(interpretation.get("candidate_ids", [])) == set(case["model_candidates"])
-                                         if "model_candidates" in case and interpretation else None),
-            "model_quote_in_report": evidence in report["message"] if evidence else None,
-            "policy_lookups_on_topic": set(requested_topics) <= relevant_topics if requested_topics and case.get("topic") else None,
+        counter = ModelCalls()
+        token = callback_tracer.set(counter)
+        try:
+            local = None if hosted else local_trace_client()
+            with tracing_context(enabled=True if hosted else "local", client=local), trace("live_triage") as root:
+                options = {"passes": passes} if "passes" in inspect.signature(triage).parameters else {}
+                proposal = triage(store, report_id, model=model, **options)
+        finally:
+            callback_tracer.reset(token)
+        trajectory, evidence = read_trace(root, topics, expected_sections, inputs["location"], counter.count)
+        reports = store.reports()
+        no_writes = (before == store.jobs() and len(reports) == 1 and not reports[0]["result"]
+                     and not any(row["event"] in {"reply_approved", "review_complete"}
+                                 for row in store.activity(report_id)))
+        signals = safety_signals(inputs["message"])
+        return {
+            "route": proposal["kind"], "urgency": proposal.get("urgency"),
+            "intake_urgency": ("emergency" if signals & {"fire", "gas"} else "urgent" if signals else None),
+            "job": (proposal.get("job") or {}).get("id"),
+            "candidates": sorted(job["id"] for job in proposal.get("candidates", [])),
+            "related_jobs": sorted(job["id"] for job in proposal.get("related_jobs", [])),
+            "category": proposal.get("category"), "priority": proposal.get("priority"), "days": proposal.get("days"),
+            "deadline": proposal.get("policy_deadline"), "issues": proposal.get("issues"),
+            "section_ids": proposal.get("retrieval", {}).get("section_ids", []),
+            "guidance_ids": proposal.get("retrieval", {}).get("example_ids", []),
+            "expected_sections": expected_sections,
+            "sections": next(((node.outputs or {}).get("sections", []) for node in descendants(root)
+                              if node.name == "interpret"), []),
+            "reply": proposal.get("reply"), "reply_sources": proposal.get("reply_sources", []),
+            "job_record": proposal.get("job"),
+            "no_write_before_approval": no_writes, "evidence": evidence, "trajectory": trajectory,
+            "trace_id": store.report(report_id)["trace_id"],
+            "latency_ms": round((perf_counter() - started) * 1000),
         }
-        return {"case": case["name"], "expected": case["kind"], "actual": actual,
-                "hazard": case.get("hazard"), "ambiguity": case.get("ambiguity"),
-                "actual_urgency": proposal.get("urgency"), "latency_ms": latency_ms, "trajectory": audit, "diagnostics": diagnostics,
-                "checks": checks, "judge": score, "retrieval": proposal["retrieval"], "trace_id": store.report(report_id)["trace_id"]}
 
 
-def run_case(case, live, use_judge, passes="full"):
-    try:
-        return evaluate(case, live, use_judge, passes)
-    except Exception as exc:
-        logging.error("Case %s failed with %s", case["name"], type(exc).__name__)
-        return {"case": case["name"], "expected": case["kind"], "actual": "error",
-                "hazard": case.get("hazard"), "ambiguity": case.get("ambiguity"),
-                "error": type(exc).__name__, "judge": None, "checks": {"completed": False}}
+class ModelCalls(BaseTracer):
+    def __init__(self):
+        super().__init__()
+        self.count = 0
+
+    def on_chat_model_start(self, *args, **kwargs):
+        self.count += 1
+        return super().on_chat_model_start(*args, **kwargs)
+
+    def _persist_run(self, run):
+        pass
 
 
-def experiment_scores(outputs):
-    checks = outputs["checks"]
-    scores = [{"key": name, "score": int(passed)} for name, passed in checks.items()]
-    scores.append({"key": "case_passed", "score": int(all(checks.values()))})
-    for name, value in outputs.get("diagnostics", {}).items():
-        if value is not None:
-            scores.append({"key": name, "score": int(value)})
-    if outputs["judge"] is not None:
-        scores.append({"key": "clarification_quality", "score": int(outputs["judge"]["resolves_missing_fact"])})
-    return {"results": scores}
+callback_tracer = ContextVar("unihelp_eval_tracer", default=None)
+register_configure_hook(callback_tracer, inheritable=True, handle_class=ModelCalls)
 
 
-def run_experiment(cases, args, agent):
-    # Guidance is a run setting. Both sides of the comparison share the same dataset.
-    fixtures = [{key: value for key, value in case.items() if key != "guidance"} for case in cases]
-    guidance = {case["name"]: case.get("guidance", []) for case in cases}
-    fingerprint = sha256(json.dumps(fixtures, sort_keys=True).encode()).hexdigest()[:12]
-    dataset_name = f"halldesk-{fingerprint}"
-    prefix = "halldesk-with-guidance" if any(guidance.values()) else "halldesk-without-guidance"
-    hosted = args.langsmith == "hosted"
-    client = Client() if hosted else Client(auto_batch_tracing=False, info={})
+def examples_for(client, suite, cases, hosted, *, sync=True):
+    name = DATASET_NAMES[suite]
     if hosted:
-        if client.has_dataset(dataset_name=dataset_name):
-            dataset = client.read_dataset(dataset_name=dataset_name)
+        if client.has_dataset(dataset_name=name):
+            dataset = client.read_dataset(dataset_name=name)
+        elif sync:
+            dataset = client.create_dataset(dataset_name=name, description="Synthetic UniHelp fixtures")
         else:
-            dataset = client.create_dataset(dataset_name, description="HallDesk labelled evaluation fixtures")
+            raise ValueError(f"Sync the complete {suite} suite before running a hosted subset.")
         dataset_id = dataset.id
     else:
-        dataset_id = uuid5(NAMESPACE_URL, dataset_name)
-    examples = [
-        Example(id=uuid5(dataset_id, case["name"]), dataset_id=dataset_id, inputs={"case": case})
-        for case in fixtures
-    ]
-    if hosted:
-        existing = {example.id for example in client.list_examples(dataset_id=dataset_id)}
-        missing = [{"id": example.id, "inputs": example.inputs} for example in examples if example.id not in existing]
+        dataset_id = uuid5(NAMESPACE_URL, name)
+
+    def payload(case):
+        return {"id": uuid5(dataset_id, case["id"]), "inputs": case["inputs"], "outputs": case["outputs"],
+                "metadata": {"case_id": case["id"], "slice": case["slice"],
+                             "policy_topics": case["policy_topics"],
+                             "policy_sections": case.get("policy_sections", [])}}
+
+    wanted = {row["id"]: row for row in map(payload, cases)}
+    if not hosted:
+        return [Example(dataset_id=dataset_id, **row) for row in wanted.values()], None
+
+    existing = {row.id: row for row in client.list_examples(dataset_id=dataset_id)}
+    if sync:
+        missing = [row | {"split": [row["metadata"]["slice"]]}
+                   for key, row in wanted.items() if key not in existing]
         if missing:
             client.create_examples(dataset_id=dataset_id, examples=missing)
+        for key, row in wanted.items():
+            if key in existing and changed(row, existing[key]):
+                client.update_example(key, dataset_id=dataset_id, inputs=row["inputs"], outputs=row["outputs"],
+                                      metadata=row["metadata"], split=[row["metadata"]["slice"]])
+    version = client.read_dataset_version(dataset_id=dataset_id, tag="latest").as_of
+    pinned = {row.id: row for row in client.list_examples(dataset_id=dataset_id, as_of=version)}
+    if any(key not in pinned or changed(row, pinned[key]) for key, row in wanted.items()):
+        raise ValueError("The hosted dataset does not match these fixtures; sync the full suite and retry.")
+    return [pinned[key] for key in wanted], version.isoformat()
 
-    def target(inputs):
-        case = inputs["case"]
-        # The SDK captures the local experiment result. Disable child traces so
-        # LangChain callbacks do not try to send them to the configured endpoint.
-        with tracing_context(enabled=hosted):
-            return run_case(case | {"guidance": guidance[case["name"]]}, args.live, args.judge, args.passes)
 
-    experiment = client.evaluate(
-        target, data=dataset_name if hosted else examples, evaluators=[experiment_scores],
-        experiment_prefix=f"{prefix}-{args.passes}", metadata={"model": agent or "scripted", "judge": args.judge, "passes": args.passes},
-        upload_results=hosted,
-    )
-    return [row["run"].outputs for row in experiment]
+def changed(payload, stored):
+    return (payload["inputs"] != stored.inputs or payload["outputs"] != stored.outputs
+            or any((stored.metadata or {}).get(key) != value for key, value in payload["metadata"].items()))
+
+
+def summarize(rows):
+    slices = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        slices[row["slice"]][row["case"]].append(all(value for value in row["checks"].values() if value is not None))
+    return {
+        label: {
+            "cases": len(groups),
+            "mean_pass_rate": mean(mean(samples) for samples in groups.values()),
+            "worst_case_pass_rate": mean(all(samples) for samples in groups.values()),
+            "best_case_pass_rate": mean(any(samples) for samples in groups.values()),
+        }
+        for label, groups in sorted(slices.items())
+    }
+
+
+def values_for(checks, inputs, outputs, reference_outputs):
+    available = locals()
+    return {check.__name__: check(**{name: available[name] for name in inspect.signature(check).parameters})
+            for check in checks}
+
+
+def langsmith_evaluator(check):
+    def score(run, example):
+        if not run.outputs:
+            return {"key": check.__name__, "value": "target failed"}
+        value = values_for((check,), example.inputs, run.outputs, example.outputs)[check.__name__]
+        if isinstance(value, dict):
+            return value
+        return ({"key": check.__name__, "score": value if isinstance(value, float) else int(value)} if value is not None
+                else {"key": check.__name__, "value": "not applicable"})
+
+    score.__name__ = check.__name__
+    return score
 
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--live", action="store_true", help="Use the configured model instead of scripted outputs")
-    parser.add_argument("--judge", action="store_true", help="Use an LLM judge for clarifications")
-    parser.add_argument("--agent", choices=["openai", "vertex", "lmstudio"], help="Override the live triage provider")
-    parser.add_argument("--model", help="Override the live agent model ID")
-    parser.add_argument("--case", action="append", help="Run only the named case, repeatable")
-    parser.add_argument("--calibrate-judge", action="store_true", help="Compare the GPT judge against labelled examples")
-    parser.add_argument("--curated-db", type=Path, help="Read approved holdouts from a HallDesk database")
-    parser.add_argument("--without-guidance", action="store_true", help="Omit approved examples from curated runs")
-    parser.add_argument("--langsmith", choices=["local", "hosted"], help="Run through the LangSmith experiment SDK")
-    parser.add_argument("--suite", choices=["all", "chase"], default="all")
-    parser.add_argument("--passes", choices=["single", "specialist", "full"], default="full")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--suite", choices=DATASET_NAMES, default="triage")
+    parser.add_argument("--agent", choices=("openai", "vertex", "lmstudio"))
+    parser.add_argument("--model")
+    parser.add_argument("--langsmith", choices=("local", "hosted"), default="local")
+    legacy = "passes" in inspect.signature(triage).parameters
+    parser.add_argument("--passes", choices=("single", "specialist", "full"), default="full" if legacy else "single")
+    parser.add_argument("--case", action="append", default=[], help="Select case IDs; repeat to select several")
+    parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--judge", action="store_true", help="Score drafted replies with the separate LM Studio model")
+    parser.add_argument("--curated", type=Path, help="Approved holdouts and guidance exported by evals.curation")
+    parser.add_argument("--without-guidance", action="store_true")
+    parser.add_argument("--against", type=Path, help="Fail when a case regresses from a complete, comparable run")
     args = parser.parse_args()
-    if (args.agent or args.model) and not args.live:
-        parser.error("--agent and --model require --live")
-    if args.curated_db and args.suite != "all":
-        parser.error("--suite chase uses the starter fixtures")
-    if args.curated_db and not args.live:
-        parser.error("--curated-db requires --live")
-    if args.without_guidance and not args.curated_db:
-        parser.error("--without-guidance requires --curated-db")
-    if args.calibrate_judge and (args.live or args.judge or args.case or args.langsmith):
-        parser.error("--calibrate-judge runs the separate calibration dataset")
-    if args.langsmith == "hosted" and not os.getenv("LANGSMITH_API_KEY"):
-        parser.error("Set LANGSMITH_API_KEY for hosted experiments.")
+    if not legacy and args.passes != "single":
+        parser.error("The production graph uses one structured interpretation.")
     if args.agent:
         os.environ["HALL_PROVIDER"] = args.agent
-        os.environ.pop("HALL_MODEL", None)
     if args.model:
         os.environ["HALL_MODEL"] = args.model
     provider = configured_provider()
-    if args.live and (issue := setup_issue(provider)):
+    if issue := setup_issue(provider):
         parser.error(issue)
-    if (args.judge or args.calibrate_judge) and not os.getenv("OPENAI_API_KEY"):
-        parser.error("Set OPENAI_API_KEY to run the GPT judge.")
-    if args.calibrate_judge:
-        examples = json.loads(Path(__file__).with_name("judge_cases.json").read_text())
-        results = []
-        for example in examples:
-            score = judge_clarification(example["report"], example["expected_fact"],
-                                        example["question"], example["choices"])
-            results.append({"case": example["name"], "expected": example["expected"], "judge": score,
-                            "checks": {"matches_label": score["resolves_missing_fact"] == example["expected"]}})
+    hosted = args.langsmith == "hosted"
+    if hosted and not os.getenv("LANGSMITH_API_KEY"):
+        parser.error("Set LANGSMITH_API_KEY for hosted experiments.")
+    if args.without_guidance and not args.curated:
+        parser.error("--without-guidance requires --curated.")
+    if args.curated and (legacy or args.suite == "safety"):
+        parser.error("Curated runs require the current triage graph.")
+    if args.suite == "curated" and not args.curated:
+        parser.error("Pass an approved export with --curated.")
+    if args.curated:
+        args.suite = "curated"
+        export = json.loads(args.curated.read_text())
+        all_cases = export["cases"]
+        guidance = [] if args.without_guidance else export["guidance"]
     else:
-        if args.curated_db:
-            if not args.curated_db.is_file():
-                parser.error("Curated database does not exist.")
-            workspace = Store(args.curated_db)
-            guidance = [] if args.without_guidance else workspace.eval_cases("guidance")
-            cases = [
-                row["expected"] | {"name": f"#{row['id']} {row['name']}", "snapshot": row["snapshot"],
-                                   "guidance": guidance}
-                for row in workspace.eval_cases("holdout")
-            ]
-            if not cases:
-                parser.error("Approve at least one holdout in HallDesk’s Evals view.")
-        else:
-            cases = json.loads(Path(__file__).with_name("cases.json").read_text())
-        if args.suite == "chase":
-            labels = json.loads(Path(__file__).with_name("chase_cases.json").read_text())
-            missing = set(labels) - {case["name"] for case in cases}
-            if missing:
-                parser.error(f"Chase suite references unknown cases: {', '.join(sorted(missing))}")
-            cases = [case | labels[case["name"]] for case in cases if case["name"] in labels]
-        if args.case:
-            unknown = set(args.case) - {case["name"] for case in cases}
-            if unknown:
-                parser.error(f"Unknown cases: {', '.join(sorted(unknown))}")
-            cases = [case for case in cases if case["name"] in args.case]
-        if args.langsmith:
-            agent = model_id(provider, os.getenv("HALL_MODEL")) if args.live else None
-            results = run_experiment(cases, args, agent)
-        else:
-            results = []
-            for case in cases:
-                result = run_case(case, args.live, args.judge, args.passes)
-                results.append(result)
-                if args.live:
-                    print(f"[{len(results)}/{len(cases)}] {case['name']}: {result['actual']}", file=sys.stderr)
+        all_cases = load_cases(args.suite)
+        guidance = []
+    if not all_cases:
+        parser.error("The suite is empty.")
+    cases = [case for case in all_cases if not args.case or case["id"] in args.case]
+    if unknown := set(args.case) - {case["id"] for case in cases}:
+        parser.error(f"Unknown case IDs: {', '.join(sorted(unknown))}")
+    if args.concurrency < 1:
+        parser.error("--concurrency must be positive.")
+
+    by_input = {json.dumps(case["inputs"], sort_keys=True): case for case in cases}
+    if len(by_input) != len(cases):
+        parser.error("Two cases have the same input snapshot.")
+    if not hosted:
+        os.environ["LANGSMITH_TRACING"] = "false"
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    client = Client() if hosted else local_trace_client()
+    examples, version = examples_for(client, args.suite, cases, hosted, sync=not args.case)
+    agent = model_id(provider, os.getenv("HALL_MODEL"))
+    fingerprint = sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest()
+
+    inference_lock = Lock() if args.judge else None
+
+    def target(inputs):
+        case = by_input[json.dumps(inputs, sort_keys=True)]
+        with inference_lock if inference_lock else nullcontext():
+            return evaluate_case(inputs, topics=case["policy_topics"], expected_sections=case.get("policy_sections", []),
+                                 passes=args.passes, hosted=hosted, guidance=guidance)
+
+    checks = (*evaluators.CORE, evaluators.reply_grounded)
+    graders = [langsmith_evaluator(check) for check in (
+        *checks, *evaluators.TRAJECTORY, evaluators.intake_urgency, evaluators.retrieval_recall_at_3)]
+    if args.judge:
+        from evals.judge import RUBRICS, evaluator_for, judge_model_id
+        judge_model_id()
+
+        def serial_judge(criterion):
+            judge = evaluator_for(criterion)
+
+            def score(inputs, outputs):
+                with inference_lock:
+                    return judge(inputs, outputs)
+
+            score.__name__ = criterion
+            return score
+
+        graders.extend(serial_judge(criterion) for criterion in RUBRICS)
+    experiment = client.evaluate(
+        target, data=examples, evaluators=graders,
+        experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,
+        upload_results=hosted, blocking=False, metadata={"model": agent, "provider": provider, "passes": args.passes,
+                                         "dataset_version": version, "dataset_sha256": fingerprint, "guidance_examples": len(guidance)},
+    )
+    rows = []
+    partial_path = args.output.with_suffix(".partial.jsonl") if args.output else None
+    if partial_path:
+        partial_path.parent.mkdir(parents=True, exist_ok=True)
+    with partial_path.open("w") if partial_path else nullcontext() as progress:
+        for row in experiment:
+            example = row["example"]
+            run = row["run"]
+            expected = example.outputs
+            actual = run.outputs
+            scores = values_for(checks, example.inputs, actual, expected) if actual else {"completed": False}
+            result = {"case": example.metadata["case_id"], "slice": example.metadata["slice"],
+                      "expected": expected, "actual": actual, "checks": scores,
+                      "error": bool(run.error or (actual and actual["trajectory"]["failed_interpretation"]))}
+            if args.judge:
+                result["judge"] = {grade.key: {"score": grade.score, "reason": grade.comment}
+                                   for grade in row["evaluation_results"]["results"] if grade.key in RUBRICS}
+            rows.append(result)
+            if progress:
+                progress.write(json.dumps(result, ensure_ascii=False) + "\n")
+                progress.flush()
+            print(f"[{len(rows)}/{len(cases) * REPETITIONS}] {result['case']}: "
+                  f"{actual['route'] if actual else 'error'}", flush=True)
     wait_for_all_tracers()
-    passed = sum(all(row["checks"].values()) for row in results)
-    judged = [row["judge"] for row in results if row["judge"] is not None]
-    latencies = [row["latency_ms"] for row in results if "latency_ms" in row]
-    output = {
-        "mode": "judge_calibration" if args.calibrate_judge else "live" if args.live else "scripted",
-        "agent": model_id(provider, os.getenv("HALL_MODEL")) if args.live else None,
-        "passed": passed, "total": len(results),
-        "suite": args.suite, "passes": args.passes,
-        "median_triage_ms": median(latencies) if latencies else None,
-        "structured_passes": sum(len(row.get("trajectory", {}).get("stages", [])) for row in results),
-        "hazard_failures": {
-            "missed": sum(row.get("hazard") in {"urgent", "emergency"} and not row.get("actual_urgency")
-                          and "actual_urgency" in row for row in results),
-            "false_alert": sum(row.get("hazard") == "none" and bool(row.get("actual_urgency")) for row in results),
-        },
-        "failed_checks": {
-            name: sum(row["checks"].get(name) is False for row in results)
-            for name in sorted({name for row in results for name, ok in row["checks"].items() if not ok})
-        },
-        "slices": {
-            key: {value: {"passed": sum(all(row["checks"].values()) for row in results if row.get(key) == value),
-                          "total": sum(row.get(key) == value for row in results)}
-                  for value in sorted({row[key] for row in results if row.get(key) is not None})}
-            for key in ("expected", "hazard", "ambiguity")
-        },
-        "judge_agreement_pct": round(100 * passed / len(results), 1) if args.calibrate_judge else None,
-        "judge_model": judge_model_id() if judged else None,
-        "judge_passed": sum(score["resolves_missing_fact"] for score in judged),
-        "judge_total": len(judged), "results": results,
-    }
+    counts = Counter(row["case"] for row in rows)
+    if counts != Counter({case["id"]: REPETITIONS for case in cases}):
+        raise RuntimeError("Experiment did not return the required repetitions for every case.")
+
+    ranks = {None: 0, "urgent": 1, "emergency": 2}
+    def actual_urgency(row, key):
+        return (row["actual"] or {}).get(key)
+
+    def safety_counts(key):
+        return {
+            "misses": sum(ranks[actual_urgency(row, key)] < ranks[row["expected"]["urgency"]]
+                          for row in rows if "urgency" in row["expected"]),
+            "false_alarms": sum("urgency" in row["expected"] and row["expected"]["urgency"] is None
+                                 and actual_urgency(row, key) is not None for row in rows),
+        }
+
+    safety = {"live": safety_counts("urgency"), "intake": safety_counts("intake_urgency")}
+    slices = summarize(rows)
+    recalls = [score for row in rows if row["actual"]
+               if (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None]
+    summary = {"suite": args.suite, "provider": provider, "model": agent, "passes": args.passes,
+               "repetitions": REPETITIONS, "dataset": DATASET_NAMES[args.suite], "dataset_version": version,
+               "guidance_examples": len(guidance),
+               "dataset_sha256": fingerprint, "experiment_url": experiment.url if hosted else None,
+               "slices": slices, "safety": safety, "retrieval_recall_at_3": mean(recalls) if recalls else None, "results": rows}
     if args.output:
-        args.output.write_text(json.dumps(output, indent=2) + "\n")
-    print(f"{passed}/{len(results)} {'reference labels matched' if args.calibrate_judge else 'deterministic cases passed'}")
-    if args.calibrate_judge:
-        print(f"Judge agreement: {output['judge_agreement_pct']}%")
-    if args.suite == "chase":
-        print(f"Structured passes: {output['structured_passes']} · median triage: {output['median_triage_ms']} ms")
-        for dimension, slices in output["slices"].items():
-            print(dimension + ": " + ", ".join(
-                f"{value} {counts['passed']}/{counts['total']}" for value, counts in slices.items()
-            ))
-    if judged and not args.calibrate_judge:
-        print(f"GPT judge: {output['judge_passed']}/{len(judged)} clarifications passed")
-    for row in results:
-        failed = [name for name, ok in row["checks"].items() if not ok]
-        actual = row.get("actual", str(row["judge"]["resolves_missing_fact"]) if row["judge"] else "")
-        print(f"{row['case']}: {actual}" + (f" (failed: {', '.join(failed)})" if failed else ""))
-    return int(passed != len(results))
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
+        partial_path.unlink(missing_ok=True)
+    for label, stats in slices.items():
+        print(f"{label}: {stats['mean_pass_rate']:.1%} mean "
+              f"({stats['worst_case_pass_rate']:.1%} worst / {stats['best_case_pass_rate']:.1%} best)")
+    print(json.dumps(safety))
+    if summary["experiment_url"]:
+        print(summary["experiment_url"])
+    if args.suite == "safety":
+        return int(bool(safety["live"]["misses"] or any(row["error"] for row in rows)))
+    comparison = args.against
+    if comparison is None and not args.case and args.suite == "triage" and not legacy:
+        candidate = HERE / "results" / "last-approved.json"
+        comparison = candidate if candidate.is_file() else None
+    if comparison:
+        previous = json.loads(comparison.read_text())
+        if previous["dataset_sha256"] != fingerprint or previous["model"] != agent:
+            parser.error("Regression comparison requires the same dataset and model.")
+        if Counter(row["case"] for row in previous["results"]) != counts:
+            parser.error("Regression comparison requires a complete run with matching repetitions.")
+        regressions = sorted(passing_cases(previous["results"]) - passing_cases(rows))
+        if regressions:
+            print("Regressions: " + ", ".join(regressions))
+        return int(bool(regressions or any(row["error"] for row in rows)))
+    return int(any(not all(v for v in row["checks"].values() if v is not None) for row in rows))
+
+
+def passing_cases(rows):
+    cases = {row["case"] for row in rows}
+    return cases - {row["case"] for row in rows if row["error"] or
+                    not all(value for value in row["checks"].values() if value is not None)}
 
 
 if __name__ == "__main__":

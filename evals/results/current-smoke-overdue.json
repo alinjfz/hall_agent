@@ -1,0 +1,449 @@
+{
+  "suite": "triage",
+  "provider": "lmstudio",
+  "model": "qwen/qwen3.5-9b",
+  "passes": "single",
+  "repetitions": 3,
+  "dataset": "unihelp-triage",
+  "dataset_version": null,
+  "dataset_sha256": "03cd750c3842566e05e58d5f8e82a0ec80a74d0c529cfeed36200119dbfb7117",
+  "experiment_url": null,
+  "slices": {
+    "normal": {
+      "cases": 1,
+      "mean_pass_rate": 1,
+      "worst_case_pass_rate": 1,
+      "best_case_pass_rate": 1
+    }
+  },
+  "safety": {
+    "live": {
+      "misses": 0,
+      "false_alarms": 0
+    },
+    "intake": {
+      "misses": 0,
+      "false_alarms": 0
+    }
+  },
+  "retrieval_recall_at_3": 1.0,
+  "results": [
+    {
+      "case": "overdue",
+      "slice": "normal",
+      "expected": {
+        "route": "escalate",
+        "urgency": null,
+        "job": 101
+      },
+      "actual": {
+        "route": "escalate",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": 101,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [
+          "chasing-repairs",
+          "repair-targets",
+          "contacting-staff"
+        ],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [
+          {
+            "id": "chasing-repairs",
+            "title": "Chasing an existing repair",
+            "text": "Include the job number if you have it and say which fitting you mean. If more than one repair could match, staff may ask which job you mean. The recorded target is the point of reference for your follow-up. After that time passes, staff can review an open repair for escalation. Report any new hazard immediately, even if you already have a job number."
+          },
+          {
+            "id": "repair-targets",
+            "title": "Repair targets",
+            "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+          },
+          {
+            "id": "contacting-staff",
+            "title": "Contacting staff and raising complaints",
+            "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+          }
+        ],
+        "reply": "Your ceiling light repair (Job 101) is currently open with a target deadline of 2026-11-06. As this is a P3 priority, staff will review the job for escalation after the target date passes if it remains unresolved. Please note that for fixed lighting, a second working light in the same room typically sets a 7-day target, but your job record shows the specific deadline listed above.",
+        "reply_sources": [
+          "chasing-repairs",
+          "repair-targets"
+        ],
+        "job_record": {
+          "id": 101,
+          "location": "Juniper Court / Flat 12 kitchen",
+          "fitting": "ceiling light",
+          "deadline": "2026-11-06T12:00:00+00:00",
+          "priority": "P3",
+          "status": "open",
+          "category": "lighting",
+          "labels": [
+            "communal_area",
+            "ceiling_light"
+          ],
+          "escalated_at": null,
+          "created_from": null
+        },
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "I'm chasing the ceiling light repair I already reported. Is there an update?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_policy",
+              "topic": null,
+              "query": "chasing repair job recorded target overdue",
+              "on_topic": true
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "get_open_jobs",
+            "search_policy",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "RunnableSequence",
+            "ChatOpenAI",
+            "_check_refusal",
+            "RunnableLambda",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c230-6cb2-7047-9f5e-a240e461f5cd",
+        "latency_ms": 11101
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": true
+      },
+      "error": false
+    },
+    {
+      "case": "overdue",
+      "slice": "normal",
+      "expected": {
+        "route": "escalate",
+        "urgency": null,
+        "job": 101
+      },
+      "actual": {
+        "route": "escalate",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": 101,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [
+          "chasing-repairs",
+          "repair-targets",
+          "contacting-staff"
+        ],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [
+          {
+            "id": "chasing-repairs",
+            "title": "Chasing an existing repair",
+            "text": "Include the job number if you have it and say which fitting you mean. If more than one repair could match, staff may ask which job you mean. The recorded target is the point of reference for your follow-up. After that time passes, staff can review an open repair for escalation. Report any new hazard immediately, even if you already have a job number."
+          },
+          {
+            "id": "repair-targets",
+            "title": "Repair targets",
+            "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+          },
+          {
+            "id": "contacting-staff",
+            "title": "Contacting staff and raising complaints",
+            "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+          }
+        ],
+        "reply": "Your ceiling light repair (Job 101) is currently open with a target deadline of 2026-11-06. As this is a P3 priority, staff will review the job for escalation after the target date passes if it remains unresolved. Please note that for fixed lighting, a second working light in the same room typically sets a 7-day target, but your job record shows the specific deadline listed above.",
+        "reply_sources": [
+          "chasing-repairs",
+          "repair-targets"
+        ],
+        "job_record": {
+          "id": 101,
+          "location": "Juniper Court / Flat 12 kitchen",
+          "fitting": "ceiling light",
+          "deadline": "2026-11-06T12:00:00+00:00",
+          "priority": "P3",
+          "status": "open",
+          "category": "lighting",
+          "labels": [
+            "communal_area",
+            "ceiling_light"
+          ],
+          "escalated_at": null,
+          "created_from": null
+        },
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "I'm chasing the ceiling light repair I already reported. Is there an update?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_policy",
+              "topic": null,
+              "query": "chasing repair job recorded target overdue",
+              "on_topic": true
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "get_open_jobs",
+            "search_policy",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "RunnableSequence",
+            "ChatOpenAI",
+            "_check_refusal",
+            "RunnableLambda",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c230-9813-724b-80fd-89b52e5a1a26",
+        "latency_ms": 8327
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": true
+      },
+      "error": false
+    },
+    {
+      "case": "overdue",
+      "slice": "normal",
+      "expected": {
+        "route": "escalate",
+        "urgency": null,
+        "job": 101
+      },
+      "actual": {
+        "route": "escalate",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": 101,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [
+          "chasing-repairs",
+          "repair-targets",
+          "contacting-staff"
+        ],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [
+          {
+            "id": "chasing-repairs",
+            "title": "Chasing an existing repair",
+            "text": "Include the job number if you have it and say which fitting you mean. If more than one repair could match, staff may ask which job you mean. The recorded target is the point of reference for your follow-up. After that time passes, staff can review an open repair for escalation. Report any new hazard immediately, even if you already have a job number."
+          },
+          {
+            "id": "repair-targets",
+            "title": "Repair targets",
+            "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+          },
+          {
+            "id": "contacting-staff",
+            "title": "Contacting staff and raising complaints",
+            "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+          }
+        ],
+        "reply": "Your ceiling light repair (Job 101) is currently open with a target deadline of 2026-11-06. As this is a P3 priority, staff will review the job for escalation after the target date passes if it remains unresolved. Please note that for fixed lighting, a second working light in the same room typically sets a 7-day target, but your job record shows the specific deadline listed above.",
+        "reply_sources": [
+          "chasing-repairs",
+          "repair-targets"
+        ],
+        "job_record": {
+          "id": 101,
+          "location": "Juniper Court / Flat 12 kitchen",
+          "fitting": "ceiling light",
+          "deadline": "2026-11-06T12:00:00+00:00",
+          "priority": "P3",
+          "status": "open",
+          "category": "lighting",
+          "labels": [
+            "communal_area",
+            "ceiling_light"
+          ],
+          "escalated_at": null,
+          "created_from": null
+        },
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "I'm chasing the ceiling light repair I already reported. Is there an update?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_policy",
+              "topic": null,
+              "query": "chasing repair job recorded target overdue",
+              "on_topic": true
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "get_open_jobs",
+            "search_policy",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "RunnableSequence",
+            "ChatOpenAI",
+            "_check_refusal",
+            "RunnableLambda",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c230-b89f-77c6-a885-3398ae0a5082",
+        "latency_ms": 8842
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": true
+      },
+      "error": false
+    }
+  ]
+}

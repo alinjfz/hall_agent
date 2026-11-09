@@ -1,0 +1,857 @@
+{
+  "mode": "live",
+  "agent": "qwen/qwen3.5-9b",
+  "passed": 8,
+  "total": 8,
+  "suite": "chase",
+  "passes": "single",
+  "median_triage_ms": 6053.0,
+  "structured_passes": 7,
+  "hazard_failures": {
+    "missed": 0,
+    "false_alert": 0
+  },
+  "failed_checks": {},
+  "slices": {
+    "expected": {
+      "draft": {
+        "passed": 1,
+        "total": 1
+      },
+      "escalate": {
+        "passed": 1,
+        "total": 1
+      },
+      "job_question": {
+        "passed": 2,
+        "total": 2
+      },
+      "manual": {
+        "passed": 4,
+        "total": 4
+      }
+    },
+    "hazard": {
+      "none": {
+        "passed": 7,
+        "total": 7
+      },
+      "urgent": {
+        "passed": 1,
+        "total": 1
+      }
+    },
+    "ambiguity": {
+      "clear": {
+        "passed": 4,
+        "total": 4
+      },
+      "multiple jobs": {
+        "passed": 2,
+        "total": 2
+      },
+      "no eligible match": {
+        "passed": 2,
+        "total": 2
+      }
+    }
+  },
+  "judge_agreement_pct": null,
+  "judge_model": null,
+  "judge_passed": 0,
+  "judge_total": 0,
+  "results": [
+    {
+      "case": "overdue",
+      "expected": "escalate",
+      "actual": "escalate",
+      "hazard": "none",
+      "ambiguity": "clear",
+      "actual_urgency": null,
+      "latency_ms": 6460,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "escalation",
+          "duplicate"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [
+            101
+          ],
+          "evidence": "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": true,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": false
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "job": true,
+        "rule": true,
+        "expected_policy_retrieved": true,
+        "handoff": true,
+        "replay": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "exact deadline",
+      "expected": "draft",
+      "actual": "draft",
+      "hazard": "none",
+      "ambiguity": "clear",
+      "actual_urgency": null,
+      "latency_ms": 13367,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "escalation",
+          "duplicate"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [
+            101
+          ],
+          "evidence": "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": true,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": false
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "job": true,
+        "rule": true,
+        "expected_policy_retrieved": true,
+        "reply_source": true,
+        "grounded_reply": true,
+        "handoff": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "ambiguous match",
+      "expected": "job_question",
+      "actual": "job_question",
+      "hazard": "none",
+      "ambiguity": "multiple jobs",
+      "actual_urgency": null,
+      "latency_ms": 5646,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "duplicate",
+          "review"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [
+            102,
+            103
+          ],
+          "evidence": "Any update on the light repair I reported on the landing?",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": true,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": false
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "candidates": true,
+        "rule": true,
+        "expected_policy_retrieved": true,
+        "chosen_job": true,
+        "handoff": true,
+        "replay": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "wrong lone match",
+      "expected": "manual",
+      "actual": "manual",
+      "hazard": "none",
+      "ambiguity": "no eligible match",
+      "actual_urgency": null,
+      "latency_ms": 8389,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "duplicate",
+          "review"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [
+            101
+          ],
+          "evidence": "I'm chasing the wall light repair I already reported.",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": false,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": false
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "handoff": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "hidden hazard",
+      "expected": "manual",
+      "actual": "manual",
+      "hazard": "urgent",
+      "ambiguity": "clear",
+      "actual_urgency": "urgent",
+      "latency_ms": 2,
+      "trajectory": {
+        "stages": [],
+        "requested_policy_topics": []
+      },
+      "diagnostics": {
+        "model_candidates_correct": null,
+        "model_quote_in_report": null,
+        "policy_lookups_on_topic": null
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "urgency": true,
+        "rule": true,
+        "expected_policy_retrieved": true,
+        "handoff": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "already escalated",
+      "expected": "manual",
+      "actual": "manual",
+      "hazard": "none",
+      "ambiguity": "clear",
+      "actual_urgency": null,
+      "latency_ms": 5071,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "escalation",
+          "follow_up"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [
+            101
+          ],
+          "evidence": "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": true,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": true
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "handoff": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "closed job excluded",
+      "expected": "manual",
+      "actual": "manual",
+      "hazard": "none",
+      "ambiguity": "no eligible match",
+      "actual_urgency": null,
+      "latency_ms": 8527,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "duplicate",
+          "escalation"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [],
+          "evidence": "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": true,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": false
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "handoff": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    },
+    {
+      "case": "clarified in-time job",
+      "expected": "job_question",
+      "actual": "job_question",
+      "hazard": "none",
+      "ambiguity": "multiple jobs",
+      "actual_urgency": null,
+      "latency_ms": 5576,
+      "trajectory": {
+        "stages": [
+          "extract_evidence"
+        ],
+        "requested_policy_topics": [
+          "duplicate",
+          "review"
+        ],
+        "interpretation": {
+          "intent": "chase",
+          "candidate_ids": [
+            102,
+            103
+          ],
+          "evidence": "Any update on the light repair I reported on the landing?",
+          "safety_issue": null
+        }
+      },
+      "diagnostics": {
+        "model_candidates_correct": true,
+        "model_quote_in_report": true,
+        "policy_lookups_on_topic": false
+      },
+      "checks": {
+        "route": true,
+        "triage_is_read_only": true,
+        "retrieved_policy": true,
+        "hazard": true,
+        "candidates": true,
+        "rule": true,
+        "expected_policy_retrieved": true,
+        "chosen_job": true,
+        "handoff": true,
+        "write": true
+      },
+      "judge": null,
+      "retrieval": {
+        "policies": [
+          {
+            "id": "OVERDUE-1",
+            "revision": 1
+          },
+          {
+            "id": "LIGHTING-1",
+            "revision": 3
+          },
+          {
+            "id": "HEATING-1",
+            "revision": 1
+          },
+          {
+            "id": "APPLIANCE-1",
+            "revision": 1
+          },
+          {
+            "id": "ACCESS-1",
+            "revision": 2
+          },
+          {
+            "id": "MULTIPLE-1",
+            "revision": 2
+          },
+          {
+            "id": "DUPLICATE-1",
+            "revision": 2
+          },
+          {
+            "id": "URGENT-1",
+            "revision": 2
+          },
+          {
+            "id": "PLUMBING-1",
+            "revision": 3
+          },
+          {
+            "id": "FOLLOWUP-1",
+            "revision": 1
+          },
+          {
+            "id": "REVIEW-1",
+            "revision": 3
+          },
+          {
+            "id": "FIRE-1",
+            "revision": 1
+          },
+          {
+            "id": "GAS-1",
+            "revision": 1
+          }
+        ],
+        "example_ids": []
+      },
+      "trace_id": null
+    }
+  ]
+}

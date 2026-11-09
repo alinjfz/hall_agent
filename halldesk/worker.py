@@ -11,7 +11,7 @@ from halldesk.workflow import process_pending
 
 def main():
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Prepare queued HallDesk handoffs without an open dashboard.")
+    parser = argparse.ArgumentParser(description="Prepare queued UniHelp handoffs without an open dashboard.")
     parser.add_argument("--once", action="store_true", help="Process the current queue and exit.")
     args = parser.parse_args()
     if issue := setup_issue(configured_provider()):
