@@ -1,0 +1,187 @@
+:root {
+    /* Streamlit sets color-scheme on the app to match its active theme. */
+    --hd-muted: light-dark(#5a626b, #b3bac3);
+    --hd-line: light-dark(#dde3e9, #444444);
+    --hd-hover: light-dark(#f3f6f9, #25282c);
+    --hd-selected: light-dark(#e6eef6, #23374a);
+    --hd-selected-line: #5482ab;
+    --hd-body-bg: light-dark(#f4f6f8, #222222);
+    --hd-body-line: var(--hd-line);
+    --hd-body-text: light-dark(#444444, #ebedf0);
+    --hd-focus: light-dark(#5482ab, #89b0d3);
+}
+.block-container {
+    --hd-top: 3.75rem;
+    --hd-pane-height: max(25rem, calc(100dvh - var(--hd-top) - 5.75rem));
+    max-width: 1400px;
+    padding: var(--hd-top) clamp(1rem, 3vw, 3rem) 1rem;
+}
+.st-key-mail-header {
+    border-bottom: 1px solid var(--hd-line);
+    padding-bottom: .75rem;
+}
+.st-key-mail-header [data-testid="stHeading"] h1 {
+    font-size: 1.9rem;
+    padding: 0;
+    letter-spacing: -.035em;
+}
+.st-key-mail-header button[kind="primary"] {
+    min-height: 2.25rem;
+    padding: .25rem .7rem;
+    font-size: .875rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.st-key-header-actions [data-testid="stPopoverButton"] {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    min-height: 2rem;
+    padding: 0;
+    display: grid;
+    place-items: center;
+}
+.st-key-header-actions [data-testid="stPopoverButton"] > div {
+    margin: 0;
+}
+.st-key-header-actions [data-testid="stPopoverButton"] > div > [aria-hidden="true"] {
+    display: none;
+}
+.st-key-workspace-nav button {
+    min-width: clamp(4rem, 8vw, 7.5rem);
+    min-height: 2.5rem;
+    font-weight: 550;
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-inbox-list),
+[data-testid="stLayoutWrapper"]:has(> .st-key-reading-pane) {
+    height: var(--hd-pane-height) !important;
+    flex: none;
+}
+.st-key-inbox-list, .st-key-reading-pane {
+    height: var(--hd-pane-height) !important;
+    min-height: 0;
+}
+.st-key-inbox-list { overflow: hidden; padding-bottom: 0; }
+.st-key-inbox-list [data-testid="stPills"] button { border-radius: 999px; }
+.st-key-report-search-bar [data-testid="stTextInput"] { flex: 1 1 9rem; }
+.st-key-report-search-bar [data-testid="stPopover"] { width: auto; }
+.st-key-report-search-bar button { white-space: nowrap; }
+[data-testid="stLayoutWrapper"]:has(> .st-key-report-rows) {
+    height: auto !important;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    margin-inline: -1rem;
+    width: calc(100% + 2rem) !important;
+    max-width: none;
+    border-top: 1px solid var(--hd-line);
+}
+.st-key-report-rows { height: auto !important; overflow: visible; }
+.st-key-report-empty { padding: .75rem 1rem; }
+.st-key-message-list [role="radiogroup"] { gap: 0; }
+.st-key-message-list [role="radiogroup"] > div { width: 100%; min-width: 0; }
+.st-key-message-list [role="radiogroup"] label {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 7.5rem;
+    margin: 0;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--hd-line);
+    align-items: start;
+    cursor: pointer;
+}
+.st-key-message-list [role="radiogroup"] label > div > div:first-child { display: none; }
+.st-key-message-list [role="radiogroup"] label > div,
+.st-key-message-list [data-testid="stMarkdownContainer"] { min-width: 0; width: 100%; margin: 0; }
+.st-key-message-list [role="radiogroup"] label:hover { background: var(--hd-hover); }
+.st-key-message-list [role="radiogroup"] label:has(input:checked) {
+    background: var(--hd-selected);
+    box-shadow: inset 3px 0 var(--hd-selected-line);
+}
+.st-key-message-list label:has(input:focus-visible) {
+    outline: 2px solid var(--hd-focus);
+    outline-offset: -2px;
+}
+.st-key-message-list [data-testid="stMarkdownContainer"] p {
+    margin: 0;
+    font-size: .875rem;
+    line-height: 1.35;
+}
+.st-key-message-list [data-testid="stMarkdownContainer"] br { display: none; }
+.st-key-message-list strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    margin-right: 3.5rem;
+    font-size: .95rem;
+}
+.st-key-message-list code {
+    position: absolute;
+    top: .8rem;
+    right: 1rem;
+    padding: 0;
+    background: transparent;
+    color: var(--hd-muted);
+    font: inherit;
+}
+.st-key-message-list em {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--hd-muted);
+    font-style: normal;
+    margin-top: .2rem;
+}
+.st-key-message-list .stMarkdownBadge {
+    position: absolute;
+    bottom: .65rem;
+    left: 1rem;
+    font-size: .875rem;
+}
+.st-key-reading-pane [data-testid="stCaptionContainer"] p { color: var(--hd-muted); }
+.st-key-reading-pane [data-testid="stText"] { white-space: pre-wrap; overflow-wrap: anywhere; }
+.st-key-reading-pane h2 { padding: .15rem 0 .1rem; line-height: 1.2; }
+.st-key-reading-pane hr { margin: .6rem 0; }
+.st-key-reading-pane [data-testid="stChatMessage"] {
+    background: var(--hd-body-bg);
+    border: 1px solid var(--hd-body-line);
+    border-radius: .65rem;
+    padding: .8rem 1rem;
+}
+[class*="st-key-ticket-bubble-"] > [data-testid="stLayoutWrapper"] {
+    max-width: min(85%, 36rem);
+    min-width: 0;
+}
+[class*="st-key-ticket-bubble-left-"] [data-testid="stChatMessage"] {
+    border-bottom-left-radius: .2rem;
+}
+[class*="st-key-ticket-bubble-right-"] [data-testid="stChatMessage"] {
+    background: var(--hd-selected);
+    border-color: var(--hd-selected);
+    border-bottom-right-radius: .2rem;
+}
+.st-key-reading-pane [data-testid="stChatMessage"] [data-testid="stText"] {
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--hd-body-text);
+}
+[class*="st-key-action-bar-"] { gap: .6rem; margin-top: .4rem; }
+.st-key-job-filters [data-testid="stTextInput"],
+.st-key-job-filters [data-testid="stSelectbox"] { flex: 1 1 10rem; }
+@media (max-width: 760px) {
+    .block-container { --hd-top: 3.5rem; }
+    .st-key-mail-header [data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+    .st-key-mail-header [data-testid="stColumn"]:has(.st-key-workspace-nav) {
+        order: 3;
+        flex-basis: 100% !important;
+    }
+    [data-testid="stLayoutWrapper"]:has(> .st-key-inbox-list),
+    .st-key-inbox-list { height: clamp(19rem, 46dvh, 26rem) !important; }
+    [data-testid="stLayoutWrapper"]:has(> .st-key-reading-pane),
+    .st-key-reading-pane { height: auto !important; }
+}

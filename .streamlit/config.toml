@@ -1,0 +1,14 @@
+[theme.light]
+primaryColor = "#426d94"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#eef1f4"
+textColor = "#444444"
+
+[theme.dark]
+primaryColor = "#426d94"
+backgroundColor = "#141414"
+secondaryBackgroundColor = "#222222"
+textColor = "#ebedf0"
+
+[server]
+runOnSave = true

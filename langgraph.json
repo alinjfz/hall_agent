@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "chase_review": "./halldesk/studio.py:graph"
+  },
+  "env": ".env"
+}

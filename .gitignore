@@ -13,6 +13,7 @@
 *.db-*
 /mydocs/
 /evals/results/
+/.langgraph_api/
 
 # Python environments and caches
 .venv/

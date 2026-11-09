@@ -1,0 +1,10 @@
+{
+  "overdue": {"ambiguity": "clear", "hazard": "none", "model_candidates": [101]},
+  "exact deadline": {"ambiguity": "clear", "hazard": "none", "model_candidates": [101]},
+  "ambiguous match": {"ambiguity": "multiple jobs", "hazard": "none", "model_candidates": [102, 103]},
+  "clarified in-time job": {"ambiguity": "multiple jobs", "hazard": "none", "model_candidates": [102, 103]},
+  "wrong lone match": {"ambiguity": "no eligible match", "hazard": "none", "model_candidates": []},
+  "hidden hazard": {"ambiguity": "clear", "hazard": "urgent"},
+  "already escalated": {"ambiguity": "clear", "hazard": "none", "model_candidates": [101]},
+  "closed job excluded": {"ambiguity": "no eligible match", "hazard": "none", "model_candidates": []}
+}
