@@ -31,7 +31,7 @@ HANDOFF_LABELS = {
     "job_question": "Ask which job", "lighting_question": "Ask about other lighting",
     "plumbing_question": "Ask about leak severity",
     "access_question": "Ask about current access", "power_question": "Ask about outage scope",
-    "split": "Split into separate reports", "manual": "Manual review",
+    "split": "Split into separate reports", "answer": "Answer from the handbook", "manual": "Manual review",
 }
 BADGE_COLORS = {"Handled": "green", "Handed over": "green", "Approval needed": "orange", "Draft ready": "blue",
                 "Clarification": "violet", "Split suggested": "violet", "Manual review": "blue",
@@ -49,12 +49,14 @@ POLICY_TITLES = {
     "gas": "Suspected gas leak or carbon monoxide",
     "plumbing": "A tap or shower is dripping",
     "follow_up": "A repair remains unresolved",
+    "question": "A resident asks about residence rules",
     "review": "A report needs a person to assess it",
 }
 OUTCOMES = {
     "created_job": "Repair job created", "escalated": "Repair escalated",
     "split_report": "Report split", "draft": "Reply draft marked handled",
-    "manual": "Manual review marked handled", "rejected": "Proposal rejected",
+    "manual": "Manual review marked handled", "answer": "Handbook answer marked handled",
+    "rejected": "Proposal rejected",
     "technician_handoff": "Handed over to technicians",
 }
 provider = configured_provider()
@@ -105,7 +107,7 @@ def status(report):
         "escalate": "Approval needed", "create": "Approval needed", "draft": "Draft ready",
         "job_question": "Clarification", "lighting_question": "Clarification",
         "plumbing_question": "Clarification", "access_question": "Clarification", "power_question": "Clarification",
-        "split": "Split suggested", "manual": "Manual review",
+        "split": "Split suggested", "answer": "Draft ready", "manual": "Manual review",
     }[report["proposal"]["kind"]]
 
 
@@ -199,6 +201,11 @@ def show_review(report, reports):
             has_edits = labels != proposal["labels"] or due_date != saved_date
             if has_edits and st.button("Save review edits"):
                 change({"labels": labels, "due_date": due_date})
+        elif kind == "answer":
+            st.markdown("#### Answer from the resident handbook")
+            st.text(f"Resident asked · {proposal['evidence']}")
+            if sources := proposal.get("reply_sources"):
+                st.caption("Cited handbook sections · " + ", ".join(sources))
         elif kind == "split":
             st.markdown("#### Separate the reported issues")
             st.caption(f"Confirm each issue belongs at {report['location']}. Each will go through its own review.")
@@ -269,7 +276,7 @@ def show_review(report, reports):
                 st.write(rule["summary"])
 
         approve = handoff = reject = False
-        if kind in {"draft", "manual"}:
+        if kind in {"draft", "answer", "manual"}:
             st.caption("Marking the report as handled completes the internal review. "
                        "Review and post any resident reply separately in the conversation.")
         with st.container(horizontal=True, key=f"action-bar-{report_id}"):

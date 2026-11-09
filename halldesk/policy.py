@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from langsmith import traceable
 
+from halldesk.evidence import quoted_in
 from halldesk.safety import safety_signals
 from halldesk.store import LABELS, is_overdue
 
@@ -104,15 +105,17 @@ def repair_proposal(report, fitting, other_works, rule, category="lighting", *, 
 
 
 @traceable(name="apply_policy")
-def apply_policy(report, interpretation, jobs, policies, now, job_reports=None):
+def apply_policy(report, interpretation, jobs, policies, now, job_reports=None, sections=None):
     message = report["message"]
     evidence = interpretation.evidence
-    if evidence and (not evidence.strip() or evidence not in message):
+    if evidence and not quoted_in(evidence, message):
         return manual("The quoted evidence was not found in the report.")
     if evidence.strip() and (interpretation.power_scope == "area" or interpretation.leak_contained is False):
         return urgent_proposal(report, policies, jobs, {"building_hazard"}, evidence=evidence)
     if interpretation.intent == "multiple":
         return handle_multiple(report, interpretation, policies)
+    if interpretation.intent == "question":
+        return handle_question(interpretation, policies, sections)
     if interpretation.intent == "access" or interpretation.category in {"lockout", "spare_key"}:
         return handle_access(report, interpretation, jobs, policies)
     if interpretation.power_scope == "unknown" and (rule := policies.get("urgent")):
@@ -141,6 +144,19 @@ def handle_multiple(report, interpretation, policies):
             return manual("The individual issues could not be verified against the report.")
         end = start + len(issue)
     return {"kind": "split", "issues": issues, "rule": rule}
+
+
+def handle_question(interpretation, policies, sections):
+    rule = policies.get("question")
+    if not rule:
+        return manual("The handbook question policy could not be verified.")
+    if not interpretation.evidence.strip():
+        return manual("The interpretation lacks verified evidence from the report.")
+    if not sections:
+        return manual("The handbook does not cover this question.") | {
+            "reply": "We couldn't find this in the resident handbook. Residence staff will follow up.",
+        }
+    return {"kind": "answer", "rule": rule, "evidence": interpretation.evidence}
 
 
 def handle_access(report, interpretation, jobs, policies):
@@ -199,7 +215,7 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
     if interpretation.other_lighting_works is None:
         return {"kind": "lighting_question", "fitting": fitting, "rule": rule,
                 "question": rule.get("clarification_question", "Does another light still work in the same room?")}
-    if not interpretation.lighting_evidence or interpretation.lighting_evidence not in message:
+    if not quoted_in(interpretation.lighting_evidence, message):
         return manual("The other lighting in the room could not be verified.")
     confirmed_at = datetime.fromisoformat(report["received_at"]) if report.get("received_at") else now
     return repair_proposal(report, fitting, interpretation.other_lighting_works, rule, confirmed_at=confirmed_at)
@@ -240,7 +256,8 @@ def context_issue(context):
     return None
 
 
-def build_proposal(report, context, interpretation, *, signals=None, safety_evidence=None, model_error=""):
+def build_proposal(report, context, interpretation, *, signals=None, safety_evidence=None, model_error="",
+                   sections=None):
     policies = context["policies"]
     if signals is None:
         signals = safety_signals(report["message"])
@@ -252,7 +269,8 @@ def build_proposal(report, context, interpretation, *, signals=None, safety_evid
             proposal = manual(model_error or "The residence duty reviewer needs to interpret this report.")
         else:
             proposal = apply_policy(report, interpretation, context["jobs"], policies,
-                                    datetime.fromisoformat(context["at"]), context.get("job_reports"))
+                                    datetime.fromisoformat(context["at"]), context.get("job_reports"),
+                                    sections=sections)
     if proposal["kind"] == "manual" and policies:
         proposal.setdefault("rule", policies["review"])
         proposal.setdefault("destination", proposal["rule"].get("destination", "Residence duty reviewer"))

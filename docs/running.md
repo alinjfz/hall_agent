@@ -19,7 +19,18 @@ make eval-safety EVAL_ARGS="--langsmith hosted --output evals/results/current-sa
 
 Append `--case overdue` to run a single case after syncing the full suite. Repeat `--case` to select several. Local mode captures traces without uploading them. Use only synthetic or explicitly approved data for hosted evaluation: redaction covers some common contact details and names. Each hosted result records the experiment run ID and trace ID. Share selected synthetic runs individually if publishing evidence.
 
-To compare the lookup follow-up, run the same chase cases twice, once with `--without-lookup-followup` and once without that flag. The output records nomination counts, median latency and total model calls. Nomination is scored before Python verifies the IDs and does not gate route or safety checks.
+The output records nomination counts, median latency and total model calls. Nomination is scored before Python verifies the IDs and does not gate route or safety checks.
+
+## Handbook retrieval
+
+Search is keyword-only until `HALL_EMBEDDING_MODEL` names an embedding model from the selected provider, for example `text-embedding-3-small` for OpenAI or an embedding model loaded in LM Studio. Each result records which half matched it, and the retriever run records `retrieval_mode`.
+
+```sh
+.venv/bin/python -m evals.retrieval_sweep
+.venv/bin/python -m evals.retrieval_sweep --hybrid
+```
+
+The sweep needs no chat model. It reports recall@3, hit@1 and MRR for the report text alone and for the production query with the expected intent and category added. The first command sweeps the BM25 floor. The second needs the embedding service and sweeps the similarity floor; copy the chosen value to `MIN_SIMILARITY` in `halldesk/retrieval.py`.
 
 Interrupted experiments leave a `.partial.jsonl` file. Only complete runs are eligible for the regression gate. Supply `--against` with a reviewed run or save it as `evals/results/last-approved.json`. Comparisons require matching model, dataset fingerprint and repetition counts. Safety reports include both trial counts and case counts: a hazard counts as caught only if it reaches the expected urgency in every trial, and a look-alike counts as flagged if it triggers an alert in any trial.
 

@@ -1,4 +1,8 @@
-"""Production graph: triage, wait for staff, then apply their decision."""
+"""Production graph: triage, wait for staff, then apply their decision.
+
+Interpret (one structured call) and screen for safety in parallel, retrieve handbook
+passages, apply deterministic policy, then draft a cited reply from the passages.
+"""
 
 import json
 import logging
@@ -22,13 +26,15 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, RetryPolicy, interrupt
 from langsmith import get_current_run_tree, traceable
 
-from halldesk.context import relevant_examples, retrieve_policy, search_rules
+from halldesk.context import handbook_query, relevant_examples, retrieve_policy, search_rules
+from halldesk.evidence import quoted_in
 from halldesk.interpretation import Interpretation
 from halldesk.models import model_timeout, structured_model, transient_error, triage_model
 from halldesk.policy import build_proposal, context_issue, identifies_fitting
 from halldesk.proposals import parse_proposal
 from halldesk.replies import ReplyDraft, grounded_reply
 from halldesk.review_policy import revise_proposal
+from halldesk.retrieval import search_handbook
 from halldesk.safety import SafetyCheck, safety_signals
 from halldesk.store import ReviewError, Store
 from halldesk.tools import search_policy
@@ -37,22 +43,17 @@ PROMPTS = Path(__file__).with_name("prompts")
 PROMPT = (PROMPTS / "interpret.txt").read_text()
 SAFETY_PROMPT = (PROMPTS / "safety.txt").read_text()
 DRAFT_PROMPT = (PROMPTS / "draft_reply.txt").read_text()
-GRAPH_VERSION = "unified-3"
+GRAPH_VERSION = "pipeline-rag-1"
 PROMPT_HASH = sha256("\0".join((PROMPT, SAFETY_PROMPT, DRAFT_PROMPT)).encode()).hexdigest()
-DEADLINE_SECONDS = 20
+# Each model step has its own budget, so a slow interpretation cannot starve the
+# safety check or silently drop the reply draft.
+INTERPRET_SECONDS = 20
+SAFETY_SECONDS = 15
+DRAFT_SECONDS = 15
 MAX_ATTEMPTS = 3
-MAX_TOOL_CALLS = 4
-POLICY_QUERIES = {
-    "chase": "chasing repair job recorded target overdue",
-    "access": "keys access spare key lockout",
-    "multiple": "reporting repairs separate faults",
-    "plumbing": "tap shower contained drip water leak",
-    "lighting": "fixed lighting repair target",
-    "heating": "verified heating faults",
-    "appliance": "verified appliance faults",
-    "lockout": "keys access lockout",
-    "spare_key": "keys access spare key",
-}
+MAX_TOOL_CALLS = 2
+DRAFT_KINDS = {"draft", "escalate", "create", "answer"}
+UNANSWERED = "A grounded handbook answer could not be drafted."
 
 
 @dataclass
@@ -123,7 +124,8 @@ def invoke_structured(model_factory, expires, schema, messages, **kwargs):
 
 
 @traceable(name="interpretation_pass", process_inputs=lambda data: {"report_id": data["report"]["id"]})
-def interpret_with_tools(model_factory, report, context, expires):
+def interpret_report(model_factory, report, context, expires):
+    """One structured call. Returns the verified interpretation and the model's raw job nominations."""
     guidance = [
         {"report": row["snapshot"]["message"], "note": row["notes"],
          "interpretation": {key: value for key, value in row["interpretation"].items()
@@ -134,32 +136,44 @@ def interpret_with_tools(model_factory, report, context, expires):
     if guidance:
         payload["staff_examples"] = guidance
     messages = [SystemMessage(PROMPT), HumanMessage(json.dumps(payload, ensure_ascii=False))]
-    result = invoke_structured(model_factory, expires, Interpretation, messages, include_raw=True,
+    result = invoke_structured(model_factory, expires, Interpretation, messages, include_raw=True, strict=True)
+    parsed = result.get("parsed")
+    if parsed is None:
+        return None, None
+    nominated = list(parsed.candidate_ids) if parsed.intent == "chase" else None
+    return verified_candidates(parsed, context["jobs"]), nominated
+
+
+def section_payload(documents):
+    return [document.metadata | {"text": document.page_content} for document in documents]
+
+
+@traceable(name="draft_pass", process_inputs=lambda data: {"sections": [row["id"] for row in data["sections"]]})
+def draft_with_search(model_factory, expires, payload, sections):
+    """Draft from the retrieved passages. The model may ask for one more round of handbook searches.
+
+    Returns the draft (or None) and every passage it was shown, so citations can be checked.
+    """
+    messages = [SystemMessage(DRAFT_PROMPT),
+                HumanMessage(json.dumps(payload | {"sections": sections}, ensure_ascii=False))]
+    result = invoke_structured(model_factory, expires, ReplyDraft, messages, include_raw=True,
                                tools=[search_policy], strict=True)
+    shown = {section["id"]: section for section in sections}
     calls = getattr(result.get("raw"), "tool_calls", [])
-    sections = {}
     if calls:
         if len(calls) > MAX_TOOL_CALLS or any(call["name"] != search_policy.name for call in calls):
-            return None, [], None
+            return None, list(shown.values())
         messages.append(result["raw"])
         for call in calls:
             reply = search_policy.invoke(call, config={"metadata": {"lookup_origin": "model"}})
             messages.append(reply)
             if reply.status != "error":
-                sections.update((section["id"], section) for section in json.loads(reply.content))
-        result = invoke_structured(model_factory, expires, Interpretation, messages, include_raw=True)
+                shown.update((section["id"], section) for section in json.loads(reply.content))
+        # The last round has no tools, so the loop always ends in a draft or a failure.
+        result = invoke_structured(model_factory, expires, ReplyDraft, messages, include_raw=True)
         if getattr(result.get("raw"), "tool_calls", []):
-            return None, list(sections.values()), None
-    parsed = result.get("parsed")
-    if parsed is None:
-        return None, list(sections.values()), None
-    if not calls:
-        key = parsed.intent if parsed.intent in {"chase", "access", "multiple"} else parsed.category
-        query = POLICY_QUERIES.get(key, "reporting repairs maintenance")
-        sections = {section["id"]: section for section in json.loads(
-            search_policy.invoke({"query": query}, config={"metadata": {"lookup_origin": "default"}}))}
-    nominated = list(parsed.candidate_ids) if parsed.intent == "chase" else None
-    return verified_candidates(parsed, context["jobs"]), list(sections.values()), nominated
+            return None, list(shown.values())
+    return result.get("parsed"), list(shown.values())
 
 
 def verified_candidates(interpretation, jobs):
@@ -210,10 +224,11 @@ def build_graph():
         return {"report_id": report_id, "report": report}
 
     def safety_gate(state: State):
+        # The interpretation deadline lives in state so that retries share one budget.
         return {"signals": sorted(safety_signals(state["report"]["message"])),
-                "expires": time() + DEADLINE_SECONDS}
+                "expires": time() + INTERPRET_SECONDS}
 
-    def retrieve(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+    def load_context(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         context = retrieve_context(store_for_run(config, runtime), state["report"])
         run = get_current_run_tree()
         if run:
@@ -228,7 +243,7 @@ def build_graph():
     def check_safety(state: State, runtime: Runtime[Context]):
         message = state["report"]["message"]
         try:
-            result = invoke_structured(model_for_run(runtime), state["expires"], SafetyCheck, [
+            result = invoke_structured(model_for_run(runtime), time() + SAFETY_SECONDS, SafetyCheck, [
                 SystemMessage(SAFETY_PROMPT),
                 HumanMessage(json.dumps({"resident_report": message}, ensure_ascii=False)),
             ])
@@ -238,18 +253,18 @@ def build_graph():
             return {"safety_review": ["unverified_safety"], "safety_evidence": None}
         if check.hazard is None:  # Small models often return "" rather than null evidence.
             return {"safety_review": [], "safety_evidence": None}
-        if check.hazard and check.evidence and check.evidence.strip() and check.evidence in message:
+        if check.hazard and quoted_in(check.evidence, message):
             return {"safety_review": [check.hazard], "safety_evidence": check.evidence}
         return {"safety_review": ["unverified_safety"], "safety_evidence": None}
 
     def interpret(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         if context_issue(state["context"]):
-            return {"interpretation": None, "sections": [], "model_error": ""}
+            return {"interpretation": None, "nominated_job_ids": None, "model_error": ""}
         report = state["report"]
         if state["expires"] > time():
             store_for_run(config, runtime).record_triage_attempt(report["id"], report["version"])
         try:
-            result, sections, nominated = interpret_with_tools(
+            result, nominated = interpret_report(
                 model_for_run(runtime), report, state["context"], state["expires"])
         except Exception as exc:
             if (transient_error(exc) and state["expires"] > time()
@@ -258,39 +273,61 @@ def build_graph():
             logging.warning("Triage model failed for report %s (%s)", report["id"], type(exc).__name__)
             error = ("timed out" if state["expires"] <= time() or model_timeout(exc) else
                      "model unavailable" if transient_error(exc) else "unparseable model output")
-            return {"interpretation": None, "sections": [], "nominated_job_ids": None, "model_error": error}
-        return {"interpretation": result.model_dump() if result else None,
-                "sections": sections, "nominated_job_ids": nominated,
+            return {"interpretation": None, "nominated_job_ids": None, "model_error": error}
+        return {"interpretation": result.model_dump() if result else None, "nominated_job_ids": nominated,
                 "model_error": "" if result else "unparseable model output"}
+
+    def retrieve_handbook(state: State):
+        """The retrieval step: search the handbook with the resident's words and the interpreted facts."""
+        facts = state.get("interpretation")
+        if not facts or state["safety_review"]:
+            return {"sections": []}  # Manual and urgent handoffs carry no drafted reply.
+        query = handbook_query(state["report"]["message"], intent=facts["intent"],
+                               category=facts.get("category"), fitting=facts.get("fitting"))
+        sections = section_payload(search_handbook(query))
+        if not sections and (run := get_current_run_tree()):
+            run.add_metadata({"retrieval_empty": True})
+        return {"sections": sections}
 
     def policy(state: State):
         result = Interpretation.model_validate(state["interpretation"]) if state["interpretation"] else None
         proposal = build_proposal(state["report"], state["context"], result,
                                   signals=state["safety_review"], safety_evidence=state.get("safety_evidence"),
-                                  model_error=state.get("model_error", ""))
+                                  model_error=state.get("model_error", ""), sections=state["sections"])
         proposal["retrieval"]["section_ids"] = [section["id"] for section in state["sections"]]
         return {"proposal": dump_proposal(proposal)}
 
     def draft_reply(state: State, runtime: Runtime[Context]):
         proposal = parse_proposal(state["proposal"])
-        if (not (runtime.context or Context()).draft_replies or not state["sections"]
-                or proposal.kind not in {"draft", "escalate", "create"} or state["expires"] <= time()):
+        if proposal.kind not in DRAFT_KINDS:
             return {}
+
+        def unanswered():
+            # A handbook answer with no grounded draft is not an answer. Hand it to staff.
+            fallback = build_proposal(state["report"], state["context"], None, signals=[], model_error=UNANSWERED)
+            fallback["retrieval"]["section_ids"] = proposal.retrieval.section_ids
+            return {"proposal": dump_proposal(fallback)}
+
+        answer = proposal.kind == "answer"
+        if not (runtime.context or Context()).draft_replies or not state["sections"]:
+            return unanswered() if answer else {}
         try:
-            draft = ReplyDraft.model_validate(invoke_structured(
-                model_for_run(runtime), state["expires"], ReplyDraft, [
-                    SystemMessage(DRAFT_PROMPT),
-                    HumanMessage(json.dumps({"report": state["report"]["message"], "job": state["proposal"].get("job"),
-                                             "sections": state["sections"]}, ensure_ascii=False)),
-                ]))
-        except Exception:
-            return {}  # Preserve a verified proposal and any deterministic reply.
-        if draft and grounded_reply(draft.body, draft.section_ids, proposal.retrieval.section_ids,
-                                    state["proposal"].get("job")):
-            return {"proposal": state["proposal"] | {"reply": draft.body, "reply_sources": draft.section_ids}}
-        if draft and (run := get_current_run_tree()):
-            run.add_metadata({"draft_rejected_by_grounding": True})
-        return {}
+            draft, shown = draft_with_search(
+                model_for_run(runtime), time() + DRAFT_SECONDS,
+                {"report": state["report"]["message"], "job": state["proposal"].get("job")}, state["sections"])
+        except Exception as exc:
+            logging.warning("Reply draft failed for report %s (%s)", state["report_id"], type(exc).__name__)
+            return unanswered() if answer else {}  # Preserve a verified proposal and any deterministic reply.
+        shown_ids = [section["id"] for section in shown]
+        if (draft and draft.covered
+                and grounded_reply(draft.body, draft.section_ids, shown_ids, state["proposal"].get("job"))):
+            retrieval = state["proposal"]["retrieval"] | {"section_ids": shown_ids}
+            return {"sections": shown, "proposal": state["proposal"] | {
+                "reply": draft.body, "reply_sources": draft.section_ids, "retrieval": retrieval}}
+        if run := get_current_run_tree():
+            run.add_metadata({"draft_not_covered": True} if draft and not draft.covered
+                             else {"draft_rejected_by_grounding": True})
+        return unanswered() if answer else {}
 
     def publish(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         store = store_for_run(config, runtime)
@@ -354,11 +391,12 @@ def build_graph():
     flow = StateGraph(State, context_schema=Context)
     flow.add_node("load_report", load_report)
     flow.add_node("safety_gate", safety_gate)
-    flow.add_node("retrieve", retrieve)
+    flow.add_node("load_context", load_context)
     flow.add_node("urgent", urgent)
     flow.add_node("check_safety", check_safety)
     flow.add_node("interpret", interpret, retry_policy=RetryPolicy(
         initial_interval=0.3, max_attempts=MAX_ATTEMPTS, jitter=False, retry_on=transient_error))
+    flow.add_node("retrieve_handbook", retrieve_handbook)
     flow.add_node("apply_policy", policy)
     flow.add_node("draft_reply", draft_reply)
     flow.add_node("publish", publish)
@@ -367,11 +405,12 @@ def build_graph():
     flow.add_edge(START, "load_report")
     flow.add_conditional_edges("load_report", lambda state: "await_review" if state.get("existing") else "safety_gate",
                                ["await_review", "safety_gate"])
-    flow.add_edge("safety_gate", "retrieve")
-    flow.add_conditional_edges("retrieve", lambda state: "urgent" if state["signals"] else ["interpret", "check_safety"],
+    flow.add_edge("safety_gate", "load_context")
+    flow.add_conditional_edges("load_context", lambda state: "urgent" if state["signals"] else ["interpret", "check_safety"],
                                ["urgent", "interpret", "check_safety"])
     flow.add_edge("urgent", "publish")
-    flow.add_edge(["interpret", "check_safety"], "apply_policy")
+    flow.add_edge(["interpret", "check_safety"], "retrieve_handbook")
+    flow.add_edge("retrieve_handbook", "apply_policy")
     flow.add_edge("apply_policy", "draft_reply")
     flow.add_edge("draft_reply", "publish")
     flow.add_edge("publish", "await_review")

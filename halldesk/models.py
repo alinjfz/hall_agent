@@ -1,10 +1,11 @@
+import logging
 import os
 from atexit import register
 from functools import lru_cache
 
 import httpx
 from langchain_core.runnables import RunnableLambda
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from openai import APIConnectionError
 
 DEFAULTS = {"openai": "gpt-6-luna", "vertex": "gemini-3.1-flash-lite", "lmstudio": "qwen/qwen3.5-9b"}
@@ -68,6 +69,35 @@ def lmstudio_model(name, *, timeout=18):
         extra_body={"chat_template_kwargs": {"enable_thinking": False},
                     "reasoning_effort": "none"} if qwen else None,
     )
+
+
+def embedding_model():
+    """Return (embeddings, model name), or (None, None) for lexical-only search.
+
+    Embeddings are opt-in so the quickstart and tests need no embedding service.
+    """
+    name = os.getenv("HALL_EMBEDDING_MODEL")
+    if not name:
+        return None, None
+    provider = configured_provider()
+    try:
+        if provider == "vertex":
+            from google.auth import default
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+            credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            return GoogleGenerativeAIEmbeddings(
+                model=name, vertexai=True, credentials=credentials, project=os.environ["GOOGLE_CLOUD_PROJECT"],
+                location=os.getenv("GOOGLE_CLOUD_LOCATION", "global")), name
+        if provider == "lmstudio":
+            return OpenAIEmbeddings(
+                model=name, base_url=os.getenv("HALL_LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1",
+                api_key=os.getenv("HALL_LM_STUDIO_API_KEY") or "lm-studio",
+                check_embedding_ctx_length=False, http_client=local_http_client(), max_retries=0, timeout=10), name
+        return OpenAIEmbeddings(model=name, max_retries=1, timeout=10), name
+    except Exception as exc:
+        logging.warning("Embedding model unavailable (%s); handbook search is lexical only", type(exc).__name__)
+        return None, None
 
 
 def structured_model(model, schema, **kwargs):

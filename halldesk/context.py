@@ -10,7 +10,28 @@ from halldesk.retrieval import BM25, tokenize
 
 REPAIR_CATEGORIES = ("lighting", "heating", "appliance", "plumbing")
 REQUIRED_TOPICS = {"lighting", "escalation", "review"}
-TOPICS = set(REPAIR_CATEGORIES) | REQUIRED_TOPICS | {"access", "multiple", "duplicate", "urgent", "follow_up", "fire", "gas"}
+TOPICS = set(REPAIR_CATEGORIES) | REQUIRED_TOPICS | {"access", "multiple", "duplicate", "urgent", "follow_up", "fire", "gas", "question"}
+
+
+# Handbook vocabulary for each interpreted intent or category. The resident's own
+# words stay in the query; these terms bridge reports that name no handbook term.
+QUERY_HINTS = {
+    "chase": "chasing existing repair job recorded target",
+    "access": "keys access",
+    "multiple": "reporting repairs separate faults",
+    "plumbing": "tap shower drip water leak",
+    "lighting": "fixed lighting repair target",
+    "heating": "verified heating faults",
+    "appliance": "verified appliance faults",
+    "lockout": "keys access cannot get into room",
+    "spare_key": "keys access spare key",
+}
+
+
+def handbook_query(message, *, intent=None, category=None, fitting=None):
+    """Build the one handbook query used in production and in the retrieval sweep."""
+    hints = [QUERY_HINTS[key] for key in (intent, category) if key in QUERY_HINTS]
+    return " ".join(part for part in (message, fitting, *hints) if part and part.strip())
 
 
 def search_rules(topic):

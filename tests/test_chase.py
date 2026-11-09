@@ -63,8 +63,10 @@ def test_chase_review_and_replay(monkeypatch):
 
         nodes = list(walk(roots[0]))
         print([(node.name, node.run_type) for node in nodes])
-        assert {"retrieve", "search_policy", "apply_policy", "await_review"} <= {node.name for node in nodes}
-        assert any("escalation" in str(node.inputs) for node in nodes if node.name == "search_policy")
+        assert {"load_context", "retrieve_handbook", "search_handbook", "apply_policy", "await_review"} <= {
+            node.name for node in nodes}
+        search = next(node for node in nodes if node.name == "search_handbook")
+        assert search.run_type == "retriever" and "ceiling light" in str(search.inputs)
         assert roots[1].outputs["action"] == "escalated", roots[1].outputs
         assert roots[1].metadata["triage_trace_id"] == str(roots[0].id)
         assert "apply_decision" in {node.name for node in walk(roots[1])}

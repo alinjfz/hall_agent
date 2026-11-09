@@ -160,11 +160,9 @@ def test_staff_can_review_after_publish_checkpoint_is_interrupted(tmp_path, monk
     assert len(store.jobs()) == 1
 
 
-def test_interpretation_receives_jobs_and_defaults_to_handbook_search(tmp_path):
+def test_interpretation_is_one_call_without_tools(tmp_path):
     import json
 
-    from langsmith import trace, tracing_context
-    from evals.run import descendants, local_trace_client
     from halldesk.interpretation import Interpretation
 
     store = Store(tmp_path / "workspace.sqlite3")
@@ -185,47 +183,139 @@ def test_interpretation_receives_jobs_and_defaults_to_handbook_search(tmp_path):
                 return {"parsed": Interpretation(intent="chase", candidate_ids=[99999])}
             return RunnableLambda(answer)
 
-    with tracing_context(enabled="local", client=local_trace_client()), trace("test") as root:
-        parsed, sections, nominated = graph.interpret_with_tools(
-            lambda **_: Model(), report, context, time() + 20)
-    assert len(seen) == 1 and [tool.name for tool in seen[0]] == ["search_policy"]
+    parsed, nominated = graph.interpret_report(lambda **_: Model(), report, context, time() + 20)
+    assert seen == [None]
     assert nominated == [99999] and parsed.candidate_ids == []
-    assert sections[0]["id"] == "chasing-repairs"
-    search = next(node for node in descendants(root) if node.name == "search_handbook")
-    assert search.run_type == "retriever"
-    assert search.outputs["documents"][0]["page_content"] == sections[0]["text"]
 
 
-@pytest.mark.parametrize(("failure", "call_count"), [("unknown", 1), ("too_many", 1), ("extra_round", 2)])
-def test_tool_loop_fails_closed(tmp_path, failure, call_count):
-    from langchain_core.messages import AIMessage
-
-    store = Store(tmp_path / "workspace.sqlite3")
-    store.seed()
-    report = store.report(1)
-    bindings = []
+def draft_model(drafts, bindings=None):
+    """Return each scripted draft response in turn and record the tools bound per call."""
+    replies = iter(drafts)
 
     class Model:
         def with_structured_output(self, schema, *, tools=None, **kwargs):
-            def answer(messages):
-                bindings.append(tools)
-                calls = [
-                    {"name": "unknown" if failure == "unknown" else "search_policy",
-                     "args": {"query": "heating faults"}, "id": f"r{len(bindings)}-{index}"}
-                    for index in range(5 if failure == "too_many" else 1)
-                ]
-                return {"raw": AIMessage(content="", tool_calls=calls)}
+            def answer(_):
+                if bindings is not None:
+                    bindings.append(tools)
+                return next(replies)
             return RunnableLambda(answer)
+    return lambda **_: Model()
 
-    parsed, sections, nominated = graph.interpret_with_tools(
-        lambda **_: Model(), report, graph.retrieve_context(store, report), time() + 20)
-    assert parsed is nominated is None
+
+SECTION = {"id": "quiet-hours", "title": "Quiet hours and shared spaces", "text": "Use the posted quiet hours."}
+
+
+@pytest.mark.parametrize(("failure", "call_count"), [("unknown", 1), ("too_many", 1), ("extra_round", 2)])
+def test_draft_search_loop_fails_closed(failure, call_count):
+    from langchain_core.messages import AIMessage
+
+    bindings = []
+
+    def tool_calls():
+        return {"raw": AIMessage(content="", tool_calls=[
+            {"name": "unknown" if failure == "unknown" else "search_policy",
+             "args": {"query": "heating faults"}, "id": f"r{len(bindings)}-{index}"}
+            for index in range(graph.MAX_TOOL_CALLS + 1 if failure == "too_many" else 1)])}
+
+    class Calls:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return tool_calls()
+
+    draft, shown = graph.draft_with_search(draft_model(Calls(), bindings), time() + 20,
+                                           {"report": "My radiator is cold.", "job": None}, [SECTION])
+    assert draft is None
     assert len(bindings) == call_count
     if failure == "extra_round":
-        assert bindings[0] and bindings[1] is None
-        assert sections
+        assert bindings[0] and bindings[1] is None  # The last round cannot call tools.
+        assert {section["id"] for section in shown} > {"quiet-hours"}
     else:
-        assert not sections
+        assert shown == [SECTION]
+
+
+def test_draft_can_cite_a_section_found_by_its_own_search():
+    from langchain_core.messages import AIMessage
+    from langsmith import trace, tracing_context
+
+    from evals.run import descendants, local_trace_client
+    from halldesk.replies import ReplyDraft
+
+    search = {"raw": AIMessage(content="", tool_calls=[
+        {"name": "search_policy", "args": {"query": "spare key"}, "id": "lookup"}])}
+    final = {"raw": None, "parsed": ReplyDraft(body="A spare key request is routine.", section_ids=["keys-and-access"])}
+    with tracing_context(enabled="local", client=local_trace_client()), trace("test") as root:
+        draft, shown = graph.draft_with_search(draft_model([search, final]), time() + 20,
+                                               {"report": "Can I get a spare key?", "job": None}, [SECTION])
+    assert draft.section_ids == ["keys-and-access"]
+    assert [section["id"] for section in shown] == ["quiet-hours", "keys-and-access"]
+    lookup = next(node for node in descendants(root) if node.name == "search_handbook")
+    assert lookup.run_type == "retriever"
+    assert lookup.outputs["documents"][0].page_content == shown[1]["text"]
+
+
+def question_report(store, message="What are the quiet hours in my building?"):
+    report_id = store.add_report("Flat 1", "Question", message)
+    return report_id, store.report(report_id)
+
+
+@pytest.mark.parametrize(("draft", "kind"), [
+    ({"body": "Use the quiet hours posted in your building.", "section_ids": ["quiet-hours"]}, "answer"),
+    ({"body": "Quiet hours start at 22:00.", "section_ids": ["quiet-hours"]}, "manual"),  # Invented time.
+    ({"body": "Use the posted quiet hours.", "section_ids": ["water-leaks"]}, "manual"),  # Unretrieved source.
+    ({"body": "I could not find that.", "section_ids": ["quiet-hours"], "covered": False}, "manual"),
+    (None, "manual"),
+])
+def test_handbook_question_needs_a_grounded_answer(tmp_path, draft, kind):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id, report = question_report(store)
+    model = scripted(report["location"], "question", {
+        "intent": "question", "evidence": "What are the quiet hours in my building?"}, draft=draft)
+    proposal = triage(store, report_id, model=model, draft_replies=True)
+    assert proposal["kind"] == kind
+    assert "quiet-hours" in proposal["retrieval"]["section_ids"]
+    if kind == "answer":
+        assert proposal["rule"]["id"] == "QUESTION-1" and proposal["reply_sources"] == ["quiet-hours"]
+        receipt = review(store, report_id, store.report(report_id)["version"], "acknowledge")
+        assert receipt["action"] == "answer"
+    else:
+        assert proposal["reason"] == graph.UNANSWERED and "reply_sources" not in proposal
+    assert not store.jobs()
+
+
+def test_question_the_handbook_does_not_cover_goes_to_staff(tmp_path):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    message = "Zxqv wvbn?"
+    report_id, report = question_report(store, message)
+    model = scripted(report["location"], "question", {"intent": "question", "evidence": message},
+                     draft={"body": "Yes.", "section_ids": ["quiet-hours"]})
+    proposal = triage(store, report_id, model=model, draft_replies=True)
+    assert proposal["kind"] == "manual"
+    assert proposal["reason"] == "The handbook does not cover this question."
+    assert proposal["retrieval"]["section_ids"] == []
+
+
+def test_evidence_ignores_case_spacing_and_typographic_quotes(tmp_path):
+    from halldesk.evidence import quoted_in
+    from tests.scripted_model import scripted
+
+    message = "The radiator in my room  isn’t heating."
+    assert quoted_in("the radiator in my room isn't heating", message)
+    assert not quoted_in("the radiator in my room is cold", message)
+    assert not quoted_in("  ", message) and not quoted_in(None, message)
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 1", "Repair", message)
+    model = scripted(store.report(report_id)["location"], "heating", {
+        "intent": "new", "fitting": "radiator", "evidence": "the radiator in my room isn't heating"})
+    assert triage(store, report_id, model=model)["kind"] == "create"
 
 
 @pytest.mark.parametrize("interpret_times_out", [False, True])

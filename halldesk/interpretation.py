@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class Interpretation(BaseModel):
-    intent: Literal["chase", "new", "access", "multiple", "manual"]
+    intent: Literal["chase", "new", "access", "multiple", "question", "manual"]
     issues: Annotated[list[str], Field(min_length=2, max_length=4)] | None = None
     candidate_ids: list[int] = []
     evidence: str = ""

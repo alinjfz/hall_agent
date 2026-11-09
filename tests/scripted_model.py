@@ -1,4 +1,4 @@
-from itertools import chain, repeat
+from itertools import repeat
 from time import monotonic, sleep
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -11,12 +11,13 @@ from halldesk.safety import SafetyCheck
 
 class ScriptedModel(GenericFakeChatModel):
     safety: SafetyCheck = SafetyCheck(hazard=None, evidence=None)
+    draft: ReplyDraft | None = None
 
     def with_structured_output(self, schema, *, include_raw=False, tools=None, **kwargs):
         if schema is SafetyCheck:
             return RunnableLambda(lambda _: self.safety)
         if schema is ReplyDraft:
-            return RunnableLambda(lambda _: None)
+            return RunnableLambda(lambda _: {"raw": None, "parsed": self.draft})
 
         def answer(messages):
             raw = self.invoke(messages)
@@ -38,17 +39,13 @@ def wait_for_triage(ui, store, *report_ids):
     ui.run(timeout=30)
 
 
-def scripted(location, topic, interpretation, *, safety=None):
+def scripted(location, topic, interpretation, *, safety=None, draft=None):
     interpretation = dict(interpretation)
     if interpretation.get("intent") == "new":
         interpretation.setdefault("category", topic)
-    query = {"escalation": "escalation chasing repair", "lighting": "fixed lighting",
-             "heating": "heating faults", "plumbing": "tap shower leak"}.get(topic, topic)
-    policy = AIMessage(content="", tool_calls=[
-        {"name": "search_policy", "args": {"query": query}, "id": "policy"},
-    ])
     answer = AIMessage(content="", tool_calls=[
         {"name": "Interpretation", "args": interpretation, "id": "interpret"},
     ])
-    return ScriptedModel(messages=chain([policy], repeat(answer)),
-                         safety=SafetyCheck.model_validate(safety) if safety else SafetyCheck(hazard=None, evidence=None))
+    return ScriptedModel(messages=repeat(answer),
+                         safety=SafetyCheck.model_validate(safety) if safety else SafetyCheck(hazard=None, evidence=None),
+                         draft=ReplyDraft.model_validate(draft) if draft else None)

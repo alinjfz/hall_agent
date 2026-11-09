@@ -35,7 +35,9 @@ def no_write_before_approval(outputs):
 
 
 def evidence_is_verbatim(inputs, outputs):
-    return all(excerpt.strip() and excerpt in inputs["message"] for excerpt in outputs["evidence"])
+    """Wording must match the report; case, spacing and typographic quotes may differ."""
+    from halldesk.evidence import quoted_in
+    return all(quoted_in(excerpt, inputs["message"]) for excerpt in outputs["evidence"])
 
 
 def model_completed(outputs):
@@ -54,6 +56,11 @@ def tool_order(outputs):
     if interpretation is None or "apply_policy" not in events:
         return None
     policy = events.index("apply_policy")
+    if "retrieve_handbook" in events:
+        # Pipeline graph: retrieval follows interpretation and precedes policy. Only the
+        # reply drafter may search again, and only after policy has decided the route.
+        return interpretation < events.index("retrieve_handbook") < policy and all(
+            index > policy for index, name in enumerate(events) if name == "search_policy")
     return interpretation < policy and all(
         index < policy for index, name in enumerate(events) if name in {"get_open_jobs", "search_rules", "search_policy"})
 
@@ -66,11 +73,6 @@ def no_off_topic_lookup(outputs):
 
 def model_calls(outputs):
     return {"key": "model_calls", "score": outputs["trajectory"]["model_calls"]}
-
-
-def model_initiated_lookups(outputs):
-    origins = [event["origin"] for event in outputs["trajectory"]["tools"] if event["origin"] is not None]
-    return origins.count("model") / len(origins) if origins else None
 
 
 def nominated_job(outputs, reference_outputs):
@@ -101,6 +103,13 @@ def retrieval_recall_at_3(outputs):
     return None
 
 
+def retrieval_hit_at_1(outputs):
+    expected = set(outputs.get("expected_sections", []))
+    if expected:
+        return bool(set(outputs.get("section_ids", [])[:1]) & expected)
+    return None
+
+
 def reply_grounded(outputs, reference_outputs):
     if not outputs.get("reply"):
         return False if reference_outputs.get("reply_grounded") else None
@@ -114,4 +123,4 @@ def reply_grounded(outputs, reference_outputs):
 
 
 CORE = (route, urgency, job, category, priority_deadline, issues, no_write_before_approval, evidence_is_verbatim, model_completed)
-TRAJECTORY = (tools_called, tool_order, no_off_topic_lookup, model_calls, model_initiated_lookups, nominated_job)
+TRAJECTORY = (tools_called, tool_order, no_off_topic_lookup, model_calls, nominated_job)

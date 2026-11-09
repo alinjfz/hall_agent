@@ -11,6 +11,7 @@ from halldesk.store import LONDON
 class ReplyDraft(BaseModel):
     body: str = Field(min_length=1, max_length=1200)
     section_ids: list[str] = Field(min_length=1, max_length=3)
+    covered: bool = Field(default=True, description="False if the passages do not contain what the resident needs.")
 
 
 JOB_REFERENCE = re.compile(r"(?i)(?:\b(?:job|repair|work order)(?:\s+(?:number|no\.?))?\s*[:#]?\s*|#)(\d+)")

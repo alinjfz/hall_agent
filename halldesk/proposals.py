@@ -101,6 +101,13 @@ class RepairProposal(BaseProposal):
     reviewer_edits: ReviewEdits | None = None
 
 
+class AnswerProposal(BaseProposal):
+    """A handbook answer for staff to approve. It never changes a job."""
+    kind: Literal["answer"] = "answer"
+    rule: Rule
+    evidence: str
+
+
 class JobQuestion(BaseProposal):
     kind: Literal["job_question"] = "job_question"
     question: str
@@ -129,7 +136,7 @@ class SplitProposal(BaseProposal):
 
 
 Proposal = Annotated[
-    ManualProposal | ChaseProposal | RepairProposal | JobQuestion | RepairQuestion | SafetyQuestion | SplitProposal,
+    ManualProposal | ChaseProposal | RepairProposal | AnswerProposal | JobQuestion | RepairQuestion | SafetyQuestion | SplitProposal,
     Field(discriminator="kind"),
 ]
 proposal_adapter = TypeAdapter(Proposal)

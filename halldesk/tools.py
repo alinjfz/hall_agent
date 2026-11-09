@@ -1,4 +1,4 @@
-"""Read-only handbook search for report interpretation."""
+"""Read-only handbook search the reply drafter may call for one extra lookup."""
 
 import json
 

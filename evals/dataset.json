@@ -1308,11 +1308,12 @@
       "clock": "2026-11-08T12:00:00+00:00"
     },
     "outputs": {
-      "route": "manual",
-      "urgency": null
+      "route": "answer",
+      "urgency": null,
+      "reply_grounded": true
     },
     "policy_topics": [
-      "review"
+      "question"
     ],
     "policy_sections": [
       "quiet-hours"
@@ -1711,6 +1712,109 @@
     ],
     "policy_sections": [
       "repair-targets"
+    ]
+  },
+  {
+    "id": "question-complaint-contact",
+    "slice": "normal",
+    "inputs": {
+      "message": "Who should I contact to make a complaint about how my maintenance issue was handled?",
+      "location": "Juniper Court / Flat 30",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "route": "answer",
+      "urgency": null,
+      "reply_grounded": true
+    },
+    "policy_topics": [
+      "question"
+    ],
+    "policy_sections": [
+      "contacting-staff"
+    ]
+  },
+  {
+    "id": "question-not-in-handbook",
+    "slice": "edge",
+    "inputs": {
+      "message": "Am I allowed to keep a hamster in my room?",
+      "location": "Juniper Court / Flat 30",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "route": "manual",
+      "urgency": null
+    },
+    "policy_topics": [
+      "question",
+      "review"
+    ],
+    "policy_sections": []
+  },
+  {
+    "id": "question-no-posted-answer",
+    "slice": "edge",
+    "inputs": {
+      "message": "What time does the laundry room close on Sundays?",
+      "location": "Juniper Court / Flat 30",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "route": "manual",
+      "urgency": null
+    },
+    "policy_topics": [
+      "question",
+      "review"
+    ],
+    "policy_sections": []
+  },
+  {
+    "id": "fault-phrased-as-question",
+    "slice": "ambiguous",
+    "inputs": {
+      "message": "Is it normal that the radiator in my room never gets warm?",
+      "location": "Juniper Court / Flat 30",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "route": "create",
+      "urgency": null,
+      "category": "heating",
+      "priority": "P2",
+      "days": 2
+    },
+    "policy_topics": [
+      "heating"
+    ],
+    "policy_sections": [
+      "repair-targets"
+    ]
+  },
+  {
+    "id": "spanish-quiet-hours-question",
+    "slice": "non-English",
+    "inputs": {
+      "message": "¿Cuál es el horario de silencio en mi edificio?",
+      "location": "Juniper Court / Flat 30",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "route": "answer",
+      "urgency": null,
+      "reply_grounded": true
+    },
+    "policy_topics": [
+      "question"
+    ],
+    "policy_sections": [
+      "quiet-hours"
     ]
   }
 ]

@@ -30,7 +30,7 @@ from halldesk.store import Store
 from halldesk.workflow import triage
 
 HERE = Path(__file__).resolve().parent
-DATASET_NAMES = {"triage": "unihelp-triage-v2", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
+DATASET_NAMES = {"triage": "unihelp-triage-v3", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
 REPETITIONS = 3
 
 
@@ -157,7 +157,11 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
                      and not any(row["event"] in {"reply_approved", "review_complete"}
                                  for row in store.activity(report_id)))
         signals = safety_signals(inputs["message"])
-        interpret = next((node.outputs or {} for node in descendants(root) if node.name == "interpret"), {})
+        nodes = {node.name: node.outputs or {} for node in descendants(root)}
+        interpret = nodes.get("interpret", {})
+        # The pipeline graph retrieves after interpretation; the drafter may add passages.
+        sections = next((nodes[name]["sections"] for name in ("draft_reply", "retrieve_handbook", "interpret")
+                         if nodes.get(name, {}).get("sections")), [])
         return {
             "route": proposal["kind"], "urgency": proposal.get("urgency"),
             # Fail-closed alerts reach staff as urgent but are not hazard detections.
@@ -171,7 +175,7 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
             "section_ids": proposal.get("retrieval", {}).get("section_ids", []),
             "guidance_ids": proposal.get("retrieval", {}).get("example_ids", []),
             "expected_sections": expected_sections,
-            "sections": interpret.get("sections", []),
+            "sections": sections,
             **({"nominated_job_ids": interpret.get("nominated_job_ids")}
                if "passes" not in inspect.signature(triage).parameters else {}),
             "reply": proposal.get("reply"), "reply_sources": proposal.get("reply_sources", []),
@@ -358,7 +362,8 @@ def main():
 
     checks = (*evaluators.CORE, evaluators.reply_grounded)
     graders = [langsmith_evaluator(check) for check in (
-        *checks, *evaluators.TRAJECTORY, evaluators.intake_urgency, evaluators.retrieval_recall_at_3)]
+        *checks, *evaluators.TRAJECTORY, evaluators.intake_urgency, evaluators.retrieval_recall_at_3,
+        evaluators.retrieval_hit_at_1)]
     if args.judge:
         from evals.judge import RUBRICS, evaluator_for, judge_model_id
         judge_model_id()
@@ -459,7 +464,9 @@ def main():
     }
     recalls = [score for row in rows if row["actual"]
                if (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None]
-    # Default lookups use canned queries, so only model-initiated recall measures the model's search.
+    # "model" trials are those where the reply drafter ran its own extra handbook search.
+    hits = [score for row in rows if row["actual"]
+            if (score := evaluators.retrieval_hit_at_1(row["actual"])) is not None]
     recall_by_origin = defaultdict(list)
     for row in rows:
         if row["actual"] and (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None:
@@ -473,6 +480,8 @@ def main():
                "dataset_sha256": fingerprint, "experiment_url": experiment.url if hosted else None,
                "slices": slices, "safety": safety, "safety_by_case": safety_by_case,
                "retrieval_recall_at_3": mean(recalls) if recalls else None,
+               "retrieval_hit_at_1": mean(hits) if hits else None,
+               "embedding_model": os.getenv("HALL_EMBEDDING_MODEL") or None,
                "retrieval_recall_at_3_by_origin": {origin: {"mean": mean(scores), "trials": len(scores)}
                                                    for origin, scores in sorted(recall_by_origin.items())},
                "results": rows}

@@ -82,6 +82,13 @@
     "source": "UniHelp demo policy"
   },
   {
+    "id": "QUESTION-1",
+    "revision": 1,
+    "topic": "question",
+    "summary": "Answer a question about residence rules or procedures only from retrieved resident handbook passages, citing them, and hold the answer for staff approval. If the handbook does not cover the question, send it to the residence duty reviewer.",
+    "source": "UniHelp demo policy"
+  },
+  {
     "id": "REVIEW-1",
     "revision": 3,
     "topic": "review",

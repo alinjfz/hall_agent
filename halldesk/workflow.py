@@ -37,23 +37,24 @@ def _trace_options(**metadata):
     return options
 
 
-def triage(store, report_id, model=None, *, claim=None):
+def triage(store, report_id, model=None, *, claim=None, draft_replies=None):
     report = store.report(report_id)
     if report["triage_claim"] != claim:
         raise ReviewError("This report is already being triaged.")
     if report["result"] or report["proposal"]:
         return report["result"] or report["proposal"]
-    return _triage(store, report, model, langsmith_extra=_trace_options(
+    return _triage(store, report, model, draft_replies, langsmith_extra=_trace_options(
         report_id=report_id, review_version=report["version"] + 1))
 
 
 @traceable(name="triage_report")
-def _triage(store, report, model=None):
+def _triage(store, report, model=None, draft_replies=None):
     factory = triage_model if model is None else lambda **_: model
     config = {"configurable": {"thread_id": revision_thread(report["id"], report["version"] + 1)}}
     state = graph_for(store).invoke(
         {"report_id": report["id"], "expected_version": report["version"], "expected_claim": report["triage_claim"]},
-        config, context=Context(store, factory, draft_replies=model is None), durability="sync")
+        config, context=Context(store, factory, draft_replies=model is None if draft_replies is None else draft_replies),
+        durability="sync")
     return state["proposal"]
 
 

@@ -59,18 +59,21 @@ def test_policy_and_guidance():
             assert {"LIGHTING-1", "HEATING-1", "APPLIANCE-1", "ACCESS-1", "MULTIPLE-1"} <= {
                 rule["id"] for rule in score["retrieval"]["policies"]
             }
-            request = next(request for request in requests if request.get("tools"))
+            def interpretations():
+                return [request for request in requests
+                        if request["response_format"]["json_schema"]["name"] == "Interpretation"]
+
+            request = interpretations()[0]
             assert request["response_format"]["type"] == "json_schema"
             assert request["model"] == "test-gemma"
-            assert {tool["function"]["name"] for tool in request["tools"]} == {"search_policy"}
+            assert not request.get("tools")  # Interpretation is one structured call with no tools.
             assert "LIGHTING-1" not in request["messages"][-1]["content"]
             assert "The wall light stopped working" in request["messages"][-1]["content"]
             store.decide_eval(1, "retired")
             second_id = store.add_report("Flat 2", "Another repair", store.report(holdout)["message"])
             result = triage(store, second_id)
             assert not result["retrieval"]["example_ids"]
-            assert "The wall light stopped working" not in next(
-                request for request in reversed(requests) if request.get("tools"))["messages"][-1]["content"]
+            assert "The wall light stopped working" not in interpretations()[-1]["messages"][-1]["content"]
             assert store.jobs() == []
 
         with patch.dict("os.environ", {"HALL_POLICY_FILE": str(Path(directory) / "missing.json")}):

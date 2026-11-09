@@ -33,7 +33,7 @@ def is_overdue(job, now):
 RESIDENCE = "Juniper Court"
 FLAT_NUMBER = re.compile(r"^flat\s+(\d+)\b", re.IGNORECASE)
 RETIRED_FLAT = 111
-HANDOFFS = ("escalate", "draft", "create", "job_question", "lighting_question", "plumbing_question", "access_question", "power_question", "split", "manual")
+HANDOFFS = ("escalate", "draft", "create", "job_question", "lighting_question", "plumbing_question", "access_question", "power_question", "split", "answer", "manual")
 LABELS = ["communal_area", "ceiling_light", "wall_light"]
 
 
@@ -259,7 +259,8 @@ class Store:
             topic = (expected.get("category", "lighting") if kind == "create" else
                      {"escalate": "escalation", "draft": "follow_up", "job_question": "escalation",
                       "lighting_question": "lighting", "plumbing_question": "plumbing",
-                      "access_question": "access", "power_question": "urgent", "split": "multiple"}.get(kind, "review"))
+                      "access_question": "access", "power_question": "urgent", "split": "multiple",
+                      "answer": "question"}.get(kind, "review"))
             policy = retrieve_policy().get(topic) or (report.get("proposal") or {}).get("rule")
             revisions = {policy["id"]: policy["revision"]} if policy else {}
             saved = db.execute("""INSERT INTO eval_cases
@@ -600,7 +601,7 @@ class Store:
                 action = {"escalate": self.escalate_job, "create": self.create_job,
                           "split": self.split_report}[proposal.kind]
                 result = action(db, report, proposal_data, now)
-            elif decision == "acknowledge" and proposal.kind in {"draft", "manual"}:
+            elif decision == "acknowledge" and proposal.kind in {"draft", "answer", "manual"}:
                 result = {"action": proposal.kind}
             elif decision == "technician_handoff" and urgent_manual:
                 result = {"action": "technician_handoff"}
