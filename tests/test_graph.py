@@ -1,4 +1,4 @@
-from time import monotonic
+from time import time
 
 import pytest
 from langchain_core.runnables import RunnableLambda
@@ -187,7 +187,7 @@ def test_interpretation_receives_jobs_and_defaults_to_handbook_search(tmp_path):
 
     with tracing_context(enabled="local", client=local_trace_client()), trace("test") as root:
         parsed, sections, nominated = graph.interpret_with_tools(
-            lambda **_: Model(), report, context, monotonic() + 20)
+            lambda **_: Model(), report, context, time() + 20)
     assert len(seen) == 1 and [tool.name for tool in seen[0]] == ["search_policy"]
     assert nominated == [99999] and parsed.candidate_ids == []
     assert sections[0]["id"] == "chasing-repairs"
@@ -218,7 +218,7 @@ def test_tool_loop_fails_closed(tmp_path, failure, call_count):
             return RunnableLambda(answer)
 
     parsed, sections, nominated = graph.interpret_with_tools(
-        lambda **_: Model(), report, graph.retrieve_context(store, report), monotonic() + 20)
+        lambda **_: Model(), report, graph.retrieve_context(store, report), time() + 20)
     assert parsed is nominated is None
     assert len(bindings) == call_count
     if failure == "extra_round":
@@ -226,3 +226,28 @@ def test_tool_loop_fails_closed(tmp_path, failure, call_count):
         assert sections
     else:
         assert not sections
+
+
+@pytest.mark.parametrize("interpret_times_out", [False, True])
+def test_clean_safety_check_never_raises_an_alert(tmp_path, interpret_times_out):
+    from halldesk.interpretation import Interpretation
+
+    class Model:
+        def with_structured_output(self, schema, **kwargs):
+            def answer(_):
+                if schema is SafetyCheck:
+                    return SafetyCheck(hazard=None, evidence="")  # Small models return "" for null.
+                if interpret_times_out:
+                    raise TimeoutError
+                return {"parsed": Interpretation(intent="new", category="heating", fitting="radiator",
+                                                 evidence="radiator is cold")}
+            return RunnableLambda(answer)
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 1", "Repair", "My radiator is cold.")
+    proposal = triage(store, report_id, model=Model())
+    assert proposal.get("urgency") is None and not proposal.get("signals")
+    assert proposal["kind"] == ("manual" if interpret_times_out else "create")
+    if interpret_times_out:
+        assert proposal["reason"] == "timed out"

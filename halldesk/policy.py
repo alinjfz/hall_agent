@@ -244,8 +244,6 @@ def build_proposal(report, context, interpretation, *, signals=None, safety_evid
     policies = context["policies"]
     if signals is None:
         signals = safety_signals(report["message"])
-    if not signals and model_error == "timed out":
-        signals = {"unverified_safety"}
     proposal = urgent_proposal(report, policies, context["jobs"], set(signals), evidence=safety_evidence)
     if proposal is None:
         if issue := context_issue(context):

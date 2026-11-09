@@ -5,6 +5,8 @@ from pathlib import Path
 
 from langsmith import traceable
 
+from halldesk.retrieval import BM25, tokenize
+
 
 REPAIR_CATEGORIES = ("lighting", "heating", "appliance", "plumbing")
 REQUIRED_TOPICS = {"lighting", "escalation", "review"}
@@ -68,20 +70,11 @@ def message_key(message):
     return " ".join(message.casefold().split())
 
 
-STOP = {"a", "an", "and", "can", "has", "have", "i", "in", "is", "it", "keeps", "my", "of",
-        "on", "please", "the", "this", "to", "was", "will", "with"}
-SYNONYMS = {"faucet": "tap", "dripping": "drip", "drips": "drip", "bulb": "light",
-            "broken": "failed", "stopped": "failed", "broke": "failed", "fix": "repair",
-            "bedroom": "room", "radiators": "radiator", "leaking": "leak"}
-
-
 def normalized_terms(message):
-    from halldesk.retrieval import tokenize
     return set(tokenize(message))
 
 
 def similar_messages(message, others):
-    from halldesk.retrieval import BM25
     terms = normalized_terms(message)
     documents = {i: normalized_terms(text) for i, text in enumerate(others)}
     if any(message_key(message) == message_key(text) for text in others):
@@ -94,7 +87,6 @@ def similar_messages(message, others):
 
 
 def relevant_examples(examples, message):
-    from halldesk.retrieval import BM25
     eligible = {row["id"]: row for row in examples
                 if not similar_messages(message, [row["snapshot"]["message"]])}
     documents = {key: " ".join(sorted(normalized_terms(row["snapshot"]["message"])))

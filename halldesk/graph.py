@@ -3,19 +3,19 @@
 import json
 import logging
 from atexit import register
+from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
 from sqlite3 import connect
 from tempfile import TemporaryDirectory
 from threading import Lock
-from time import monotonic
-from typing import TypedDict
+from time import time
+from typing import Any, TypedDict
 from uuid import NAMESPACE_URL, uuid5
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph._internal._constants import CONFIG_KEY_CHECKPOINTER
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
@@ -53,6 +53,14 @@ POLICY_QUERIES = {
     "lockout": "keys access lockout",
     "spare_key": "keys access spare key",
 }
+
+
+@dataclass
+class Context:
+    """Run-scoped dependencies. Studio supplies none and gets an isolated workspace."""
+    store: Any = None
+    model_factory: Any = None
+    draft_replies: bool = True
 
 
 class State(TypedDict, total=False):
@@ -101,12 +109,15 @@ def retrieve_context(store, report):
 
 
 def invoke_structured(model_factory, expires, schema, messages, **kwargs):
-    remaining = expires - monotonic()
+    remaining = expires - time()
     if remaining <= 0:
         raise TimeoutError
     model = model_factory(timeout=remaining)
+    if run := get_current_run_tree():
+        primary = model[0] if isinstance(model, tuple) else model
+        run.add_metadata({"model_id": getattr(primary, "model_name", None) or getattr(primary, "model", None)})
     result = structured_model(model, schema, method="json_schema", **kwargs).invoke(messages)
-    if monotonic() >= expires:
+    if time() >= expires:
         raise TimeoutError
     return result
 
@@ -170,19 +181,18 @@ def verified_candidates(interpretation, jobs):
     return interpretation.model_copy(update={"candidate_ids": candidates})
 
 
-def store_for_run(config):
-    if "hall_store" in config["configurable"]:
-        return config["configurable"]["hall_store"]
-    return studio_store(config)
+def store_for_run(config, runtime):
+    context = runtime.context or Context()
+    return context.store or studio_store(config)
 
 
-def model_for_run(config):
-    return config["configurable"].get("hall_model_factory", triage_model)
+def model_for_run(runtime):
+    return (runtime.context or Context()).model_factory or triage_model
 
 
 def build_graph():
-    def load_report(state: State, config: RunnableConfig):
-        store = store_for_run(config)
+    def load_report(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+        store = store_for_run(config, runtime)
         report_id = state.get("report_id", 1)
         if "message" in state:
             report_id = store.add_report(state["location"], state.get("subject", "Studio report"), state["message"])
@@ -201,10 +211,10 @@ def build_graph():
 
     def safety_gate(state: State):
         return {"signals": sorted(safety_signals(state["report"]["message"])),
-                "expires": monotonic() + DEADLINE_SECONDS}
+                "expires": time() + DEADLINE_SECONDS}
 
-    def retrieve(state: State, config: RunnableConfig):
-        context = retrieve_context(store_for_run(config), state["report"])
+    def retrieve(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+        context = retrieve_context(store_for_run(config, runtime), state["report"])
         run = get_current_run_tree()
         if run:
             run.add_metadata({"graph_version": GRAPH_VERSION, "prompt_sha256": PROMPT_HASH,
@@ -215,10 +225,10 @@ def build_graph():
         proposal = build_proposal(state["report"], state["context"], None, signals=state["signals"])
         return {"proposal": dump_proposal(proposal)}
 
-    def check_safety(state: State, config: RunnableConfig):
+    def check_safety(state: State, runtime: Runtime[Context]):
         message = state["report"]["message"]
         try:
-            result = invoke_structured(model_for_run(config), state["expires"], SafetyCheck, [
+            result = invoke_structured(model_for_run(runtime), state["expires"], SafetyCheck, [
                 SystemMessage(SAFETY_PROMPT),
                 HumanMessage(json.dumps({"resident_report": message}, ensure_ascii=False)),
             ])
@@ -226,27 +236,27 @@ def build_graph():
         except Exception as exc:
             logging.warning("Safety screening unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
             return {"safety_review": ["unverified_safety"], "safety_evidence": None}
-        if check.hazard is None and check.evidence is None:
+        if check.hazard is None:  # Small models often return "" rather than null evidence.
             return {"safety_review": [], "safety_evidence": None}
         if check.hazard and check.evidence and check.evidence.strip() and check.evidence in message:
             return {"safety_review": [check.hazard], "safety_evidence": check.evidence}
         return {"safety_review": ["unverified_safety"], "safety_evidence": None}
 
-    def interpret(state: State, config: RunnableConfig, runtime: Runtime):
+    def interpret(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         if context_issue(state["context"]):
             return {"interpretation": None, "sections": [], "model_error": ""}
         report = state["report"]
-        if state["expires"] > monotonic():
-            store_for_run(config).record_triage_attempt(report["id"], report["version"])
+        if state["expires"] > time():
+            store_for_run(config, runtime).record_triage_attempt(report["id"], report["version"])
         try:
             result, sections, nominated = interpret_with_tools(
-                model_for_run(config), report, state["context"], state["expires"])
+                model_for_run(runtime), report, state["context"], state["expires"])
         except Exception as exc:
-            if (transient_error(exc) and state["expires"] > monotonic()
+            if (transient_error(exc) and state["expires"] > time()
                     and runtime.execution_info.node_attempt < MAX_ATTEMPTS):
                 raise
             logging.warning("Triage model failed for report %s (%s)", report["id"], type(exc).__name__)
-            error = ("timed out" if state["expires"] <= monotonic() or model_timeout(exc) else
+            error = ("timed out" if state["expires"] <= time() or model_timeout(exc) else
                      "model unavailable" if transient_error(exc) else "unparseable model output")
             return {"interpretation": None, "sections": [], "nominated_job_ids": None, "model_error": error}
         return {"interpretation": result.model_dump() if result else None,
@@ -261,14 +271,14 @@ def build_graph():
         proposal["retrieval"]["section_ids"] = [section["id"] for section in state["sections"]]
         return {"proposal": dump_proposal(proposal)}
 
-    def draft_reply(state: State, config: RunnableConfig):
+    def draft_reply(state: State, runtime: Runtime[Context]):
         proposal = parse_proposal(state["proposal"])
-        if (not config["configurable"].get("hall_draft_replies", True) or not state["sections"]
-                or proposal.kind not in {"draft", "escalate", "create"} or state["expires"] <= monotonic()):
+        if (not (runtime.context or Context()).draft_replies or not state["sections"]
+                or proposal.kind not in {"draft", "escalate", "create"} or state["expires"] <= time()):
             return {}
         try:
             draft = ReplyDraft.model_validate(invoke_structured(
-                model_for_run(config), state["expires"], ReplyDraft, [
+                model_for_run(runtime), state["expires"], ReplyDraft, [
                     SystemMessage(DRAFT_PROMPT),
                     HumanMessage(json.dumps({"report": state["report"]["message"], "job": state["proposal"].get("job"),
                                              "sections": state["sections"]}, ensure_ascii=False)),
@@ -282,8 +292,8 @@ def build_graph():
             run.add_metadata({"draft_rejected_by_grounding": True})
         return {}
 
-    def publish(state: State, config: RunnableConfig):
-        store = store_for_run(config)
+    def publish(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+        store = store_for_run(config, runtime)
         report = state["report"]
         thread_id = config["configurable"]["thread_id"]
         proposal = state["proposal"] | {"review_thread_id": thread_id}
@@ -305,8 +315,8 @@ def build_graph():
         return {"decision": decision, "error": ""}
 
     @traceable(name="apply_decision")
-    def apply_decision(state: State, config: RunnableConfig):
-        store = store_for_run(config)
+    def apply_decision(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+        store = store_for_run(config, runtime)
         decision = state["decision"]
         report_id = state["report_id"]
         try:
@@ -341,7 +351,7 @@ def build_graph():
         except (ReviewError, ValueError, KeyError) as exc:
             return Command(update={"error": str(exc)}, goto="await_review")
 
-    flow = StateGraph(State)
+    flow = StateGraph(State, context_schema=Context)
     flow.add_node("load_report", load_report)
     flow.add_node("safety_gate", safety_gate)
     flow.add_node("retrieve", retrieve)
@@ -369,23 +379,24 @@ def build_graph():
     return flow
 
 
-# Keep checkpoints beside the reports, including for isolated evaluation databases.
-_checkpointers = {}
-_checkpointer_lock = Lock()
+# One compiled graph per workspace keeps checkpoints beside its reports,
+# including for isolated evaluation databases.
+_graphs = {}
+_graphs_lock = Lock()
 
 
 @register
 def close_checkpointers():
-    for saver in _checkpointers.values():
-        saver.conn.close()
+    for compiled in _graphs.values():
+        compiled.checkpointer.conn.close()
 
 
-def checkpointer_for(path):
-    path = Path(path).resolve()
-    with _checkpointer_lock:
-        for removed in [key for key in _checkpointers if not key.exists()]:
-            _checkpointers.pop(removed).conn.close()
-        if path not in _checkpointers:
+def graph_for(store):
+    path = Path(store.path).resolve()
+    with _graphs_lock:
+        for removed in [key for key in _graphs if not key.exists()]:
+            _graphs.pop(removed).checkpointer.conn.close()
+        if path not in _graphs:
             connection = connect(path, check_same_thread=False, timeout=2)
             saver = SqliteSaver(connection)
             try:
@@ -393,13 +404,8 @@ def checkpointer_for(path):
             except BaseException:
                 connection.close()
                 raise
-            _checkpointers[path] = saver
-        return _checkpointers[path]
-
-
-def production_config(store, thread_id, **options):
-    return {"configurable": {"thread_id": thread_id, "hall_store": store,
-                             CONFIG_KEY_CHECKPOINTER: checkpointer_for(store.path), **options}}
+            _graphs[path] = build_graph().compile(checkpointer=saver, name="unihelp")
+        return _graphs[path]
 
 
 studio_workspace = TemporaryDirectory(prefix="unihelp-studio-")

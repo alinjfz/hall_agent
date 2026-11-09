@@ -160,6 +160,8 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
         interpret = next((node.outputs or {} for node in descendants(root) if node.name == "interpret"), {})
         return {
             "route": proposal["kind"], "urgency": proposal.get("urgency"),
+            # Fail-closed alerts reach staff as urgent but are not hazard detections.
+            "safety_unverified": "unverified_safety" in proposal.get("signals", []),
             "intake_urgency": ("emergency" if signals & {"fire", "gas"} else "urgent" if signals else None),
             "job": (proposal.get("job") or {}).get("id"),
             "candidates": sorted(job["id"] for job in proposal.get("candidates", [])),
@@ -413,10 +415,20 @@ def main():
     def actual_urgency(row, key):
         return (row["actual"] or {}).get(key)
 
+    def detected_urgency(row, key):
+        unverified = key == "urgency" and (row["actual"] or {}).get("safety_unverified")
+        return None if unverified else actual_urgency(row, key)
+
+    def unverified(expected_hazard):
+        return sum(bool((row["actual"] or {}).get("safety_unverified")) for row in rows
+                   if "urgency" in row["expected"] and bool(row["expected"]["urgency"]) is expected_hazard)
+
     def safety_counts(key):
         return {
             "misses": sum(ranks[actual_urgency(row, key)] < ranks[row["expected"]["urgency"]]
                           for row in rows if "urgency" in row["expected"]),
+            "undetected": sum(ranks[detected_urgency(row, key)] < ranks[row["expected"]["urgency"]]
+                              for row in rows if "urgency" in row["expected"]),
             "false_alarms": sum("urgency" in row["expected"] and row["expected"]["urgency"] is None
                                  and actual_urgency(row, key) is not None for row in rows),
         }
@@ -427,12 +439,14 @@ def main():
 
     def safety_cases(key):
         under_triaged = {row["case"] for row in rows if row["case"] in hazards
-                         and ranks[actual_urgency(row, key)] < ranks[row["expected"]["urgency"]]}
+                         and ranks[detected_urgency(row, key)] < ranks[row["expected"]["urgency"]]}
         false_alarms = {row["case"] for row in rows if row["case"] in lookalikes and actual_urgency(row, key)}
         return {"hazards_caught_every_trial": len(hazards - under_triaged), "hazards": len(hazards),
                 "lookalikes_flagged_at_least_once": len(false_alarms), "lookalikes": len(lookalikes)}
 
-    safety = {"live": safety_counts("urgency"), "intake": safety_counts("intake_urgency")}
+    safety = {"live": safety_counts("urgency") | {"unverified_alerts_on_hazards": unverified(True),
+                                                  "unverified_alerts_on_lookalikes": unverified(False)},
+              "intake": safety_counts("intake_urgency")}
     safety_by_case = {"live": safety_cases("urgency"), "intake": safety_cases("intake_urgency")}
     slices = summarize(rows)
     actuals = [row["actual"] for row in rows if row["actual"]]
@@ -445,13 +459,23 @@ def main():
     }
     recalls = [score for row in rows if row["actual"]
                if (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None]
+    # Default lookups use canned queries, so only model-initiated recall measures the model's search.
+    recall_by_origin = defaultdict(list)
+    for row in rows:
+        if row["actual"] and (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None:
+            origins = {event["origin"] for event in row["actual"]["trajectory"]["tools"]
+                       if event["name"] == "search_policy"}
+            recall_by_origin["model" if "model" in origins else "default" if origins else "none"].append(score)
     summary = {"suite": args.suite, "provider": provider, "model": agent, "passes": args.passes,
                "repetitions": REPETITIONS, "dataset": DATASET_NAMES[args.suite], "dataset_version": version,
                "guidance_examples": len(guidance),
                "interpretation": interpretation,
                "dataset_sha256": fingerprint, "experiment_url": experiment.url if hosted else None,
                "slices": slices, "safety": safety, "safety_by_case": safety_by_case,
-               "retrieval_recall_at_3": mean(recalls) if recalls else None, "results": rows}
+               "retrieval_recall_at_3": mean(recalls) if recalls else None,
+               "retrieval_recall_at_3_by_origin": {origin: {"mean": mean(scores), "trials": len(scores)}
+                                                   for origin, scores in sorted(recall_by_origin.items())},
+               "results": rows}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")

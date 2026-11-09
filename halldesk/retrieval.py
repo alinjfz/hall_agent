@@ -10,10 +10,15 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langsmith import traceable
 
-from halldesk.context import STOP, SYNONYMS
-
 
 HANDBOOK = Path(__file__).with_name("handbook")
+# Chosen with evals/retrieval_sweep.py: the highest cut-off that loses no recall@3.
+MIN_SCORE = 1.0
+STOP = {"a", "an", "and", "can", "has", "have", "i", "in", "is", "it", "keeps", "my", "of",
+        "on", "please", "the", "this", "to", "was", "will", "with"}
+SYNONYMS = {"faucet": "tap", "dripping": "drip", "drips": "drip", "bulb": "light",
+            "broken": "failed", "stopped": "failed", "broke": "failed", "fix": "repair",
+            "bedroom": "room", "radiators": "radiator", "leaking": "leak"}
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,6 @@ def handbook_index():
 })
 def search_handbook(query, limit=3):
     sections, index = handbook_index()
-    matches = (sections[key] for key, _ in index.search(query, limit, min_score=2.0))
+    matches = (sections[key] for key, _ in index.search(query, limit, min_score=MIN_SCORE))
     return [Document(id=section.id, page_content=section.text,
                      metadata={"id": section.id, "title": section.title}) for section in matches]
