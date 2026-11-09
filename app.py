@@ -300,7 +300,8 @@ def show_review(report, reports):
             except ReviewError as exc:
                 st.error(str(exc))
                 st.session_state[f"refresh-{report_id}"] = True
-        if st.session_state.get(f"refresh-{report_id}") and st.button("Refresh proposal"):
+        can_refresh = st.session_state.get(f"refresh-{report_id}") or (kind == "manual" and not proposal.get("urgency"))
+        if can_refresh and st.button("Refresh proposal", disabled=bool(configuration_issue)):
             try:
                 store.requeue_review(report_id, version)
                 st.session_state.pop(f"refresh-{report_id}", None)

@@ -9,6 +9,8 @@ trap 'exit 143' TERM
 git -C "$root" archive 3668279af4bd1ac3b44226f55ac938cba7b30409 halldesk | tar -x -C "$scratch"
 mkdir "$scratch/evals"
 cp "$root"/evals/run.py "$root"/evals/evaluators.py "$root"/evals/dataset.json "$root"/evals/safety_holdout.json "$scratch/evals/"
+# The reply verifier belongs to the shared harness; the pinned agent never imports it.
+cp "$root/halldesk/replies.py" "$scratch/halldesk/"
 if [ -f "$root/.env" ]; then ln -s "$root/.env" "$scratch/.env"; fi
 cd "$scratch"
-HALL_PROVIDER=lmstudio "$root/.venv/bin/python" -m evals.run "$@"
+"$root/.venv/bin/python" -m evals.run "$@"

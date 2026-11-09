@@ -172,6 +172,7 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
         proposal = manual("An open job already covers this fitting.") | {
             "duplicate_job_ids": duplicate_jobs, "related_jobs": [job for job in jobs if job["id"] in duplicate_jobs],
             "evidence": message,
+            "reply": "There is already an open repair for this fitting. Residence staff can review your report alongside it.",
         }
         if duplicate_rule := policies.get("duplicate"):
             proposal["rule"] = duplicate_rule
@@ -228,7 +229,9 @@ def handle_chase(interpretation, jobs, policies, now):
         return {"kind": "job_question", "candidates": candidates, "rule": rule, "evidence": evidence,
                 "question": "Which of these fittings is the resident following up on?"}
     if len(candidates) != 1:
-        return manual("A matching open job could not be established.")
+        return manual("A matching open job could not be established.") | {
+            "reply": "We couldn't verify a matching open repair. If you have a job reference, please share it so residence staff can check.",
+        }
     job = candidates[0]
     if not identifies_fitting(evidence, job["fitting"]):
         return manual("The report evidence does not identify the selected fitting.")

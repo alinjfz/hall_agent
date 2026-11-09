@@ -27,7 +27,12 @@ TIME_REFERENCE = re.compile(r"\b\d{1,2}:\d{2}\b")
 
 
 def grounded_reply(body, section_ids, retrieved_ids, job=None):
-    if not body.strip() or not section_ids or not set(section_ids) <= set(retrieved_ids):
+    return (bool(section_ids) and set(section_ids) <= set(retrieved_ids)
+            and grounded_reply_facts(body, job))
+
+
+def grounded_reply_facts(body, job=None):
+    if not body.strip():
         return False
     if any(job is None or int(ref) != job["id"] for ref in JOB_REFERENCE.findall(body)):
         return False

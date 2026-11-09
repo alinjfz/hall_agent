@@ -160,3 +160,35 @@ CASES = json.loads(Path(__file__).with_name("scripted_cases.json").read_text())
 def test_scripted_policy_and_review(case):
     result = evaluate(case)
     assert all(result["checks"].values()), result["checks"]
+
+
+def test_live_dataset_contract():
+    from collections import Counter
+
+    from evals.run import load_cases
+    from halldesk.retrieval import handbook_index
+
+    cases = load_cases("triage")
+    counts = Counter(case["slice"] for case in cases)
+    assert counts == {"hazard": 22, "edge": 10, "normal": 12, "ambiguous": 9,
+                      "adversarial": 8, "non-English": 8}
+    holdout = load_cases("safety")
+    assert len({case["id"] for case in [*cases, *holdout]}) == len(cases) + len(holdout)
+    assert len({case["inputs"]["message"] for case in holdout} &
+               {case["inputs"]["message"] for case in cases}) == 0
+    sections, _ = handbook_index()
+    for case in [*cases, *holdout]:
+        expected = case["outputs"]
+        if case in cases:
+            assert expected.get("route"), case["id"]
+        else:
+            assert "urgency" in expected, case["id"]
+        if case["slice"] == "hazard":
+            assert expected["urgency"] in {"urgent", "emergency"}, case["id"]
+        for key in ("issues", "evidence", "safety_evidence", "lighting_evidence"):
+            quotes = expected.get(key) or []
+            if isinstance(quotes, str):
+                quotes = [quotes]
+            assert all(quote.strip() and quote in case["inputs"]["message"] for quote in quotes), case["id"]
+        if case in cases:
+            assert set(case.get("policy_sections", [])) <= sections.keys(), case["id"]

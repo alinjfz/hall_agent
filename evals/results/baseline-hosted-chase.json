@@ -1,0 +1,1403 @@
+{
+  "suite": "triage",
+  "provider": "lmstudio",
+  "model": "qwen/qwen3.5-9b",
+  "passes": "full",
+  "repetitions": 3,
+  "dataset": "unihelp-triage-v2",
+  "dataset_version": "2026-11-09T21:43:36.659808+00:00",
+  "guidance_examples": 0,
+  "lookup_followup": false,
+  "interpretation": {
+    "nominated_job": {
+      "passed": 0,
+      "total": 0
+    },
+    "median_latency_ms": 22607,
+    "model_calls": 21
+  },
+  "dataset_sha256": "6afe279571deeff3ae00877fdc61cf490e9f83ad09b0a045c9353addc19633e2",
+  "experiment_url": "https://smith.langchain.com/o/84ac8070-9fc2-4628-86a1-bd1930514885/datasets/41973756-a698-4a88-b7e2-2b4675a5df8c/compare?selectedSessions=cf4695d8-b976-47d6-a1a1-4dc95df9e748",
+  "slices": {
+    "ambiguous": {
+      "cases": 2,
+      "passed_trials": 4,
+      "total_trials": 6,
+      "passed_every_trial": 1,
+      "passed_any_trial": 2
+    },
+    "normal": {
+      "cases": 1,
+      "passed_trials": 3,
+      "total_trials": 3,
+      "passed_every_trial": 1,
+      "passed_any_trial": 1
+    }
+  },
+  "safety": {
+    "live": {
+      "misses": 0,
+      "false_alarms": 0
+    },
+    "intake": {
+      "misses": 0,
+      "false_alarms": 0
+    }
+  },
+  "safety_by_case": {
+    "live": {
+      "hazards_caught_every_trial": 0,
+      "hazards": 0,
+      "lookalikes_flagged_at_least_once": 0,
+      "lookalikes": 3
+    },
+    "intake": {
+      "hazards_caught_every_trial": 0,
+      "hazards": 0,
+      "lookalikes_flagged_at_least_once": 0,
+      "lookalikes": 3
+    }
+  },
+  "retrieval_recall_at_3": 0.0,
+  "results": [
+    {
+      "case": "overdue",
+      "slice": "normal",
+      "expected": {
+        "job": 101,
+        "route": "escalate",
+        "urgency": null
+      },
+      "actual": {
+        "route": "escalate",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": 101,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Repair #101 for the ceiling light is still open. Its recorded target is 06 Nov 2026, 12:00 GMT. That target has passed.\n\nIf you’re dissatisfied with how an unresolved maintenance issue was handled, you can contact your building manager to raise a complaint.",
+        "reply_sources": [],
+        "job_record": {
+          "id": 101,
+          "location": "Juniper Court / Flat 12 kitchen",
+          "fitting": "ceiling light",
+          "deadline": "2026-11-06T12:00:00+00:00",
+          "priority": "P3",
+          "status": "open",
+          "category": "lighting",
+          "labels": [
+            "communal_area",
+            "ceiling_light"
+          ],
+          "escalated_at": null,
+          "created_from": null
+        },
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "Is there an update?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "duplicate",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "apply_policy",
+            "chase_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c248-c3d5-74bd-a8ef-ac9449ce4129",
+        "latency_ms": 28113
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c248-c3b9-71a7-a929-3cd7c868d4de",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 2
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "ambiguous-match",
+      "slice": "ambiguous",
+      "expected": {
+        "route": "job_question",
+        "urgency": null,
+        "candidates": [
+          102,
+          103
+        ]
+      },
+      "actual": {
+        "route": "manual",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Your report needs residence staff review.",
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "follow_up",
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "review",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_rules",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "apply_policy"
+          ],
+          "model_calls": 3,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c249-31b0-7a6f-9733-69e603ee9f05",
+        "latency_ms": 46597
+      },
+      "checks": {
+        "route": false,
+        "urgency": true,
+        "job": false,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c249-31a6-720a-8f2e-22d52497a1d0",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 3
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "wrong-lone-match",
+      "slice": "ambiguous",
+      "expected": {
+        "job": null,
+        "route": "manual",
+        "urgency": null
+      },
+      "actual": {
+        "route": "manual",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Your report needs residence staff review.",
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the wall light repair I already reported.",
+          "I'm chasing the wall light repair I already reported.",
+          "I'm chasing the wall light repair I already reported."
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "duplicate",
+              "query": null,
+              "on_topic": false
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "review",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_rules",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "apply_policy"
+          ],
+          "model_calls": 2,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c249-e7c5-792a-9ff0-bf429fb4d495",
+        "latency_ms": 23480
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c249-e7b6-7ba2-805b-ec0b25a5d789",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 2
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "overdue",
+      "slice": "normal",
+      "expected": {
+        "job": 101,
+        "route": "escalate",
+        "urgency": null
+      },
+      "actual": {
+        "route": "escalate",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": 101,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Repair #101 for the ceiling light is still open. Its recorded target is 06 Nov 2026, 12:00 GMT. That target has passed.\n\nIf you’re dissatisfied with how an unresolved maintenance issue was handled, you can contact your building manager to raise a complaint.",
+        "reply_sources": [],
+        "job_record": {
+          "id": 101,
+          "location": "Juniper Court / Flat 12 kitchen",
+          "fitting": "ceiling light",
+          "deadline": "2026-11-06T12:00:00+00:00",
+          "priority": "P3",
+          "status": "open",
+          "category": "lighting",
+          "labels": [
+            "communal_area",
+            "ceiling_light"
+          ],
+          "escalated_at": null,
+          "created_from": null
+        },
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "Is there an update?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "duplicate",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "apply_policy",
+            "chase_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c24a-438c-70f2-8c40-1dd167dda9cd",
+        "latency_ms": 10214
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c24a-437d-7d45-9a97-8f8f04c8cd44",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 2
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "ambiguous-match",
+      "slice": "ambiguous",
+      "expected": {
+        "route": "job_question",
+        "urgency": null,
+        "candidates": [
+          102,
+          103
+        ]
+      },
+      "actual": {
+        "route": "job_question",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [
+          102,
+          103
+        ],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": null,
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "Any update on the light repair I reported on the landing?",
+          "Any update on the light repair I reported on the landing?",
+          "Any update on the light repair I reported on the landing?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "follow_up",
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "review",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "search_rules",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy"
+          ],
+          "model_calls": 3,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c24a-6b7d-78d6-b144-f1f4cb548a5b",
+        "latency_ms": 23839
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c24a-6b72-720e-aed4-83d372da0c10",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 3
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "wrong-lone-match",
+      "slice": "ambiguous",
+      "expected": {
+        "job": null,
+        "route": "manual",
+        "urgency": null
+      },
+      "actual": {
+        "route": "manual",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Your report needs residence staff review.",
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the wall light repair I already reported.",
+          "I'm chasing the wall light repair I already reported.",
+          "I'm chasing the wall light repair I already reported."
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "duplicate",
+              "query": null,
+              "on_topic": false
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "review",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_rules",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy"
+          ],
+          "model_calls": 2,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c24a-c8a7-78a2-a047-48a15e346085",
+        "latency_ms": 20571
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c24a-c89d-7cd6-a602-f0ce23178a1a",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 2
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "overdue",
+      "slice": "normal",
+      "expected": {
+        "job": 101,
+        "route": "escalate",
+        "urgency": null
+      },
+      "actual": {
+        "route": "escalate",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": 101,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Repair #101 for the ceiling light is still open. Its recorded target is 06 Nov 2026, 12:00 GMT. That target has passed.\n\nIf you’re dissatisfied with how an unresolved maintenance issue was handled, you can contact your building manager to raise a complaint.",
+        "reply_sources": [],
+        "job_record": {
+          "id": 101,
+          "location": "Juniper Court / Flat 12 kitchen",
+          "fitting": "ceiling light",
+          "deadline": "2026-11-06T12:00:00+00:00",
+          "priority": "P3",
+          "status": "open",
+          "category": "lighting",
+          "labels": [
+            "communal_area",
+            "ceiling_light"
+          ],
+          "escalated_at": null,
+          "created_from": null
+        },
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "I'm chasing the ceiling light repair I already reported. Is there an update?",
+          "Is there an update?"
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "duplicate",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "apply_policy",
+            "chase_review",
+            "await_review"
+          ],
+          "model_calls": 2,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c24b-190b-76e0-b3e4-d7aeea92a065",
+        "latency_ms": 10182
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c24b-1902-7fbd-a41b-8a12b1bee013",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 2
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "ambiguous-match",
+      "slice": "ambiguous",
+      "expected": {
+        "route": "job_question",
+        "urgency": null,
+        "candidates": [
+          102,
+          103
+        ]
+      },
+      "actual": {
+        "route": "manual",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Your report needs residence staff review.",
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "follow_up",
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "review",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "search_rules",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy"
+          ],
+          "model_calls": 3,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c24b-40db-7b37-9ecd-8271fe456e0b",
+        "latency_ms": 17898
+      },
+      "checks": {
+        "route": false,
+        "urgency": true,
+        "job": false,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c24b-40d1-7ccc-96a8-a73cb7cf5c3b",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 3
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "wrong-lone-match",
+      "slice": "ambiguous",
+      "expected": {
+        "job": null,
+        "route": "manual",
+        "urgency": null
+      },
+      "actual": {
+        "route": "manual",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": null,
+        "priority": null,
+        "days": null,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [],
+        "expected_sections": [
+          "chasing-repairs"
+        ],
+        "sections": [],
+        "reply": "Your report needs residence staff review.",
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "I'm chasing the wall light repair I already reported.",
+          "I'm chasing the wall light repair I already reported.",
+          "I'm chasing the wall light repair I already reported."
+        ],
+        "trajectory": {
+          "tools": [
+            {
+              "name": "get_open_jobs",
+              "origin": null,
+              "topic": null,
+              "query": null,
+              "on_topic": true
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "duplicate",
+              "query": null,
+              "on_topic": false
+            },
+            {
+              "name": "search_rules",
+              "origin": null,
+              "topic": "review",
+              "query": null,
+              "on_topic": false
+            }
+          ],
+          "steps": [
+            "triage_report",
+            "retrieve_policy",
+            "get_open_jobs",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "RunnableLambda",
+            "search_rules",
+            "search_rules",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy"
+          ],
+          "model_calls": 2,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c24b-86ce-74cb-8b38-d287aca043a1",
+        "latency_ms": 22607
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": true,
+        "category": null,
+        "priority_deadline": null,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c24b-86c5-7e42-acdd-f113623876eb",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": [
+              {
+                "name": "get_open_jobs",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              },
+              {
+                "name": "search_rules",
+                "origin": null
+              }
+            ]
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 2
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    }
+  ]
+}

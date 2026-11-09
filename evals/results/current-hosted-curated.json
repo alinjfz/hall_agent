@@ -1,0 +1,378 @@
+{
+  "suite": "curated",
+  "provider": "lmstudio",
+  "model": "qwen/qwen3.5-9b",
+  "passes": "single",
+  "repetitions": 3,
+  "dataset": "unihelp-curated",
+  "dataset_version": "2026-11-09T21:48:13.289451+00:00",
+  "guidance_examples": 1,
+  "lookup_followup": true,
+  "interpretation": {
+    "nominated_job": {
+      "passed": 0,
+      "total": 0
+    },
+    "median_latency_ms": 3514,
+    "model_calls": 3
+  },
+  "dataset_sha256": "0fd55a2f30383881cde85aa87407b7f65b630b8e30c9dc4d8df3fc51c3744230",
+  "experiment_url": "https://smith.langchain.com/o/84ac8070-9fc2-4628-86a1-bd1930514885/datasets/df01b542-4ee4-436b-ae71-2cf70030dc33/compare?selectedSessions=f13fdce2-5fc9-46d1-b7a7-c42cbe73417d",
+  "slices": {
+    "curated": {
+      "cases": 1,
+      "passed_trials": 3,
+      "total_trials": 3,
+      "passed_every_trial": 1,
+      "passed_any_trial": 1
+    }
+  },
+  "safety": {
+    "live": {
+      "misses": 0,
+      "false_alarms": 0
+    },
+    "intake": {
+      "misses": 0,
+      "false_alarms": 0
+    }
+  },
+  "safety_by_case": {
+    "live": {
+      "hazards_caught_every_trial": 0,
+      "hazards": 0,
+      "lookalikes_flagged_at_least_once": 0,
+      "lookalikes": 1
+    },
+    "intake": {
+      "hazards_caught_every_trial": 0,
+      "hazards": 0,
+      "lookalikes_flagged_at_least_once": 0,
+      "lookalikes": 1
+    }
+  },
+  "retrieval_recall_at_3": 0.0,
+  "results": [
+    {
+      "case": "contained-shower-drip",
+      "slice": "curated",
+      "expected": {
+        "days": 14,
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3"
+      },
+      "actual": {
+        "route": "create",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [
+          1
+        ],
+        "expected_sections": [
+          "water-leaks"
+        ],
+        "sections": [],
+        "nominated_job_ids": null,
+        "reply": null,
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "The bathroom shower keeps dripping into the tray even when it is turned off."
+        ],
+        "trajectory": {
+          "tools": [],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 1,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c248-8168-71c8-bb31-f4af33c1da88",
+        "latency_ms": 6982
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": null,
+        "category": true,
+        "priority_deadline": true,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c248-8168-71c8-bb31-f4af33c1da88",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": []
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 1
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "contained-shower-drip",
+      "slice": "curated",
+      "expected": {
+        "days": 14,
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3"
+      },
+      "actual": {
+        "route": "create",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [
+          1
+        ],
+        "expected_sections": [
+          "water-leaks"
+        ],
+        "sections": [],
+        "nominated_job_ids": null,
+        "reply": null,
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "The bathroom shower keeps dripping into the tray even when it is turned off."
+        ],
+        "trajectory": {
+          "tools": [],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 1,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c248-9cb3-72b1-9dac-e8080df126a6",
+        "latency_ms": 3514
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": null,
+        "category": true,
+        "priority_deadline": true,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c248-9cb3-72b1-9dac-e8080df126a6",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": []
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 1
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    },
+    {
+      "case": "contained-shower-drip",
+      "slice": "curated",
+      "expected": {
+        "days": 14,
+        "route": "create",
+        "urgency": null,
+        "category": "plumbing",
+        "priority": "P3"
+      },
+      "actual": {
+        "route": "create",
+        "urgency": null,
+        "intake_urgency": null,
+        "job": null,
+        "candidates": [],
+        "related_jobs": [],
+        "category": "plumbing",
+        "priority": "P3",
+        "days": 14,
+        "deadline": null,
+        "issues": null,
+        "section_ids": [],
+        "guidance_ids": [
+          1
+        ],
+        "expected_sections": [
+          "water-leaks"
+        ],
+        "sections": [],
+        "nominated_job_ids": null,
+        "reply": null,
+        "reply_sources": [],
+        "job_record": null,
+        "no_write_before_approval": true,
+        "evidence": [
+          "The bathroom shower keeps dripping into the tray even when it is turned off.",
+          "The bathroom shower keeps dripping into the tray even when it is turned off."
+        ],
+        "trajectory": {
+          "tools": [],
+          "steps": [
+            "triage_report",
+            "unihelp",
+            "safety_gate",
+            "RunnableCallable",
+            "retrieve",
+            "retrieve_policy",
+            "interpret",
+            "interpretation_pass",
+            "RunnableSequence",
+            "RunnableParallel<raw>",
+            "ChatOpenAI",
+            "RunnableWithFallbacks",
+            "RunnableAssign<parsed,parsing_error>",
+            "RunnableParallel<parsed,parsing_error>",
+            "RunnableSequence",
+            "RunnableLambda",
+            "RunnableLambda",
+            "_check_refusal",
+            "RunnableLambda",
+            "apply_policy",
+            "apply_policy",
+            "draft_reply",
+            "publish",
+            "await_review",
+            "await_review"
+          ],
+          "model_calls": 1,
+          "draft_rejected_by_grounding": false,
+          "failed_interpretation": false,
+          "error_kind": null
+        },
+        "trace_id": "01a1c248-aa97-7005-9233-4e72eac7b916",
+        "latency_ms": 3478
+      },
+      "checks": {
+        "route": true,
+        "urgency": true,
+        "job": null,
+        "category": true,
+        "priority_deadline": true,
+        "issues": null,
+        "no_write_before_approval": true,
+        "evidence_is_verbatim": true,
+        "model_completed": true,
+        "reply_grounded": null
+      },
+      "run_id": "01a1c248-aa97-7005-9233-4e72eac7b916",
+      "trajectory_checks": {
+        "tools_called": {
+          "key": "tools_called",
+          "value": {
+            "ordered": []
+          }
+        },
+        "tool_order": true,
+        "no_off_topic_lookup": null,
+        "model_calls": {
+          "key": "model_calls",
+          "score": 1
+        },
+        "model_initiated_lookups": null,
+        "nominated_job": null
+      },
+      "error": false
+    }
+  ]
+}

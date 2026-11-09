@@ -10,7 +10,7 @@ from contextvars import ContextVar
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 from tempfile import TemporaryDirectory
 from threading import Lock
 from time import perf_counter
@@ -30,7 +30,7 @@ from halldesk.store import Store
 from halldesk.workflow import triage
 
 HERE = Path(__file__).resolve().parent
-DATASET_NAMES = {"triage": "unihelp-triage", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
+DATASET_NAMES = {"triage": "unihelp-triage-v2", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
 REPETITIONS = 3
 
 
@@ -107,7 +107,8 @@ def read_trace(run, topics, expected_sections, location, provider_calls):
                         pass
             if node.name == "get_open_jobs" and node.inputs.get("location"):
                 on_topic = node.inputs["location"].casefold() == location.casefold()
-            tools.append({"name": node.name, "topic": topic, "query": query, "on_topic": on_topic})
+            origin = (node.extra or {}).get("metadata", {}).get("lookup_origin")
+            tools.append({"name": node.name, "origin": origin, "topic": topic, "query": query, "on_topic": on_topic})
         if node.name == "apply_policy":
             interpretation = node.inputs.get("interpretation", {})
             if hasattr(interpretation, "model_dump"):
@@ -124,6 +125,9 @@ def read_trace(run, topics, expected_sections, location, provider_calls):
         "tools": tools,
         "steps": [node.name for node in runs],
         "model_calls": max(provider_calls, sum(node.run_type == "llm" for node in runs)),
+        "draft_rejected_by_grounding": any(
+            (node.extra or {}).get("metadata", {}).get("draft_rejected_by_grounding") for node in runs
+        ),
         "failed_interpretation": bool(failure) or bool(passes and not any(node.name == "apply_policy" for node in runs)),
         "error_kind": ("timeout" if "timeout" in failure.casefold() or "timed out" in failure.casefold()
                        else "model_error" if failure else None),
@@ -153,6 +157,7 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
                      and not any(row["event"] in {"reply_approved", "review_complete"}
                                  for row in store.activity(report_id)))
         signals = safety_signals(inputs["message"])
+        interpret = next((node.outputs or {} for node in descendants(root) if node.name == "interpret"), {})
         return {
             "route": proposal["kind"], "urgency": proposal.get("urgency"),
             "intake_urgency": ("emergency" if signals & {"fire", "gas"} else "urgent" if signals else None),
@@ -164,8 +169,9 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
             "section_ids": proposal.get("retrieval", {}).get("section_ids", []),
             "guidance_ids": proposal.get("retrieval", {}).get("example_ids", []),
             "expected_sections": expected_sections,
-            "sections": next(((node.outputs or {}).get("sections", []) for node in descendants(root)
-                              if node.name == "interpret"), []),
+            "sections": interpret.get("sections", []),
+            **({"nominated_job_ids": interpret.get("nominated_job_ids")}
+               if "passes" not in inspect.signature(triage).parameters else {}),
             "reply": proposal.get("reply"), "reply_sources": proposal.get("reply_sources", []),
             "job_record": proposal.get("job"),
             "no_write_before_approval": no_writes, "evidence": evidence, "trajectory": trajectory,
@@ -243,9 +249,10 @@ def summarize(rows):
     return {
         label: {
             "cases": len(groups),
-            "mean_pass_rate": mean(mean(samples) for samples in groups.values()),
-            "worst_case_pass_rate": mean(all(samples) for samples in groups.values()),
-            "best_case_pass_rate": mean(any(samples) for samples in groups.values()),
+            "passed_trials": sum(sum(samples) for samples in groups.values()),
+            "total_trials": sum(map(len, groups.values())),
+            "passed_every_trial": sum(all(samples) for samples in groups.values()),
+            "passed_any_trial": sum(any(samples) for samples in groups.values()),
         }
         for label, groups in sorted(slices.items())
     }
@@ -278,6 +285,7 @@ def main():
     parser.add_argument("--agent", choices=("openai", "vertex", "lmstudio"))
     parser.add_argument("--model")
     parser.add_argument("--langsmith", choices=("local", "hosted"), default="local")
+    parser.add_argument("--sync-only", action="store_true", help="Sync the full dataset without running the model")
     legacy = "passes" in inspect.signature(triage).parameters
     parser.add_argument("--passes", choices=("single", "specialist", "full"), default="full" if legacy else "single")
     parser.add_argument("--case", action="append", default=[], help="Select case IDs; repeat to select several")
@@ -286,8 +294,12 @@ def main():
     parser.add_argument("--judge", action="store_true", help="Score drafted replies with the separate LM Studio model")
     parser.add_argument("--curated", type=Path, help="Approved holdouts and guidance exported by evals.curation")
     parser.add_argument("--without-guidance", action="store_true")
+    parser.add_argument("--without-lookup-followup", action="store_true", help="Disable the optional interpretation turn")
     parser.add_argument("--against", type=Path, help="Fail when a case regresses from a complete, comparable run")
     args = parser.parse_args()
+    if args.without_lookup_followup:
+        os.environ["HALL_LOOKUP_FOLLOWUP"] = "false"
+    lookup_followup = not legacy and os.getenv("HALL_LOOKUP_FOLLOWUP", "true").lower() == "true"
     if not legacy and args.passes != "single":
         parser.error("The production graph uses one structured interpretation.")
     if args.agent:
@@ -298,6 +310,8 @@ def main():
     if issue := setup_issue(provider):
         parser.error(issue)
     hosted = args.langsmith == "hosted"
+    if args.sync_only and (not hosted or args.case):
+        parser.error("--sync-only requires --langsmith hosted and the full dataset.")
     if hosted and not os.getenv("LANGSMITH_API_KEY"):
         parser.error("Set LANGSMITH_API_KEY for hosted experiments.")
     if args.without_guidance and not args.curated:
@@ -332,6 +346,9 @@ def main():
     examples, version = examples_for(client, args.suite, cases, hosted, sync=not args.case)
     agent = model_id(provider, os.getenv("HALL_MODEL"))
     fingerprint = sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest()
+    if args.sync_only:
+        print(f"{DATASET_NAMES[args.suite]}: {len(examples)} cases, version {version}, sha256 {fingerprint}")
+        return 0
 
     inference_lock = Lock() if args.judge else None
 
@@ -363,7 +380,8 @@ def main():
         target, data=examples, evaluators=graders,
         experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,
         upload_results=hosted, blocking=False, metadata={"model": agent, "provider": provider, "passes": args.passes,
-                                         "dataset_version": version, "dataset_sha256": fingerprint, "guidance_examples": len(guidance)},
+                                         "dataset_version": version, "dataset_sha256": fingerprint,
+                                         "lookup_followup": lookup_followup, "guidance_examples": len(guidance)},
     )
     rows = []
     partial_path = args.output.with_suffix(".partial.jsonl") if args.output else None
@@ -378,6 +396,8 @@ def main():
             scores = values_for(checks, example.inputs, actual, expected) if actual else {"completed": False}
             result = {"case": example.metadata["case_id"], "slice": example.metadata["slice"],
                       "expected": expected, "actual": actual, "checks": scores,
+                      "run_id": str(run.id),
+                      "trajectory_checks": values_for(evaluators.TRAJECTORY, example.inputs, actual, expected) if actual else {},
                       "error": bool(run.error or (actual and actual["trajectory"]["failed_interpretation"]))}
             if args.judge:
                 result["judge"] = {grade.key: {"score": grade.score, "reason": grade.comment}
@@ -405,22 +425,46 @@ def main():
                                  and actual_urgency(row, key) is not None for row in rows),
         }
 
+    hazards = {row["case"] for row in rows if row["expected"].get("urgency")}
+    lookalikes = {row["case"] for row in rows
+                  if "urgency" in row["expected"] and row["expected"]["urgency"] is None}
+
+    def safety_cases(key):
+        under_triaged = {row["case"] for row in rows if row["case"] in hazards
+                         and ranks[actual_urgency(row, key)] < ranks[row["expected"]["urgency"]]}
+        false_alarms = {row["case"] for row in rows if row["case"] in lookalikes and actual_urgency(row, key)}
+        return {"hazards_caught_every_trial": len(hazards - under_triaged), "hazards": len(hazards),
+                "lookalikes_flagged_at_least_once": len(false_alarms), "lookalikes": len(lookalikes)}
+
     safety = {"live": safety_counts("urgency"), "intake": safety_counts("intake_urgency")}
+    safety_by_case = {"live": safety_cases("urgency"), "intake": safety_cases("intake_urgency")}
     slices = summarize(rows)
+    actuals = [row["actual"] for row in rows if row["actual"]]
+    nominations = [value for row in rows
+                   if (value := row["trajectory_checks"].get("nominated_job")) is not None]
+    interpretation = {
+        "nominated_job": {"passed": sum(nominations), "total": len(nominations)},
+        "median_latency_ms": median(row["latency_ms"] for row in actuals) if actuals else None,
+        "model_calls": sum(row["trajectory"]["model_calls"] for row in actuals),
+    }
     recalls = [score for row in rows if row["actual"]
                if (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None]
     summary = {"suite": args.suite, "provider": provider, "model": agent, "passes": args.passes,
                "repetitions": REPETITIONS, "dataset": DATASET_NAMES[args.suite], "dataset_version": version,
-               "guidance_examples": len(guidance),
+               "guidance_examples": len(guidance), "lookup_followup": lookup_followup,
+               "interpretation": interpretation,
                "dataset_sha256": fingerprint, "experiment_url": experiment.url if hosted else None,
-               "slices": slices, "safety": safety, "retrieval_recall_at_3": mean(recalls) if recalls else None, "results": rows}
+               "slices": slices, "safety": safety, "safety_by_case": safety_by_case,
+               "retrieval_recall_at_3": mean(recalls) if recalls else None, "results": rows}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")
         partial_path.unlink(missing_ok=True)
     for label, stats in slices.items():
-        print(f"{label}: {stats['mean_pass_rate']:.1%} mean "
-              f"({stats['worst_case_pass_rate']:.1%} worst / {stats['best_case_pass_rate']:.1%} best)")
+        print(f"{label}: {stats['passed_trials']}/{stats['total_trials']} trials "
+              f"({stats['passed_every_trial']}/{stats['cases']} cases passed every trial; "
+              f"{stats['passed_any_trial']}/{stats['cases']} passed at least one)")
+    print(json.dumps(interpretation))
     print(json.dumps(safety))
     if summary["experiment_url"]:
         print(summary["experiment_url"])

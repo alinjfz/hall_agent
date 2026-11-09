@@ -149,3 +149,79 @@ def test_staff_can_review_after_publish_checkpoint_is_interrupted(tmp_path, monk
     assert receipt["action"] == "created_job"
     assert review(store, report_id, proposal_version, "approve") == receipt
     assert len(store.jobs()) == 1
+
+
+@pytest.mark.parametrize("followup", ["normal", "near_deadline", "disabled"])
+def test_declared_lookup_can_inform_one_guarded_followup(tmp_path, monkeypatch, followup):
+    import json
+
+    from langsmith import trace, tracing_context
+    from evals.evaluators import model_initiated_lookups, no_off_topic_lookup
+    from evals.run import local_trace_client, read_trace
+    from halldesk.interpretation import Interpretation
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed()
+    report = store.report(1)
+    jobs = store.jobs(report["location"])
+    assert jobs
+    seen = []
+    monkeypatch.setenv("HALL_LOOKUP_FOLLOWUP", "false" if followup == "disabled" else "true")
+
+    class Model:
+        def with_structured_output(self, schema, *, tools=None, **kwargs):
+            async def answer(messages):
+                seen.append((tools, list(messages)))
+                if len(seen) == 1:
+                    return {"parsed": Interpretation(intent="chase", evidence=report["message"], look_up_jobs=True)}
+                assert tools is None
+                payload = json.loads(messages[-1].content.split("\n", 1)[1])
+                assert payload["get_open_jobs"] == jobs
+                return {"parsed": Interpretation(intent="chase", candidate_ids=[99999])}
+            return RunnableLambda(answer)
+
+    with tracing_context(enabled="local", client=local_trace_client()), trace("test") as root:
+        parsed, _, nominated = asyncio.run(graph.interpret_with_tools(
+            Model(), report, store, [], monotonic() + (4 if followup == "near_deadline" else 20)))
+    trajectory, _ = read_trace(root, (), ("quiet-hours",), report["location"], 0)
+    assert [(tool["name"], tool["origin"]) for tool in trajectory["tools"]] == [
+        ("get_open_jobs", "declared"), ("search_policy", "default")]
+    assert trajectory["tools"][1]["on_topic"] is False
+    assert no_off_topic_lookup({"trajectory": trajectory}) is True
+    assert model_initiated_lookups({"trajectory": trajectory}) == 0
+    assert len(seen) == (2 if followup == "normal" else 1)
+    if followup == "normal":
+        assert nominated == [99999]
+        assert parsed.candidate_ids == []
+
+
+@pytest.mark.parametrize(("failure", "call_count"), [("unknown", 1), ("too_many", 1), ("extra_round", 3)])
+def test_tool_loop_fails_closed(tmp_path, failure, call_count):
+    from langchain_core.messages import AIMessage
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed()
+    report = store.report(1)
+    bindings = []
+
+    class Model:
+        def with_structured_output(self, schema, *, tools=None, **kwargs):
+            async def answer(messages):
+                bindings.append(tools)
+                calls = [
+                    {"name": "unknown" if failure == "unknown" else "search_policy",
+                     "args": {"query": "heating"}, "id": f"r{len(bindings)}-{index}"}
+                    for index in range(5 if failure == "too_many" else 1)
+                ]
+                return {"raw": AIMessage(content="", tool_calls=calls)}
+            return RunnableLambda(answer)
+
+    parsed, sections, nominated = asyncio.run(graph.interpret_with_tools(
+        Model(), report, store, [], monotonic() + 20))
+    assert parsed is nominated is None
+    assert len(bindings) == call_count
+    if failure == "extra_round":
+        assert all(bindings[:2]) and bindings[2] is None
+        assert sections
+    else:
+        assert not sections

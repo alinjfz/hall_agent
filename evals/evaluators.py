@@ -43,7 +43,9 @@ def model_completed(outputs):
 
 
 def tools_called(outputs):
-    return {"key": "tools_called", "value": {"ordered": [event["name"] for event in outputs["trajectory"]["tools"]]}}
+    return {"key": "tools_called", "value": {"ordered": [
+        {"name": event["name"], "origin": event["origin"]} for event in outputs["trajectory"]["tools"]
+    ]}}
 
 
 def tool_order(outputs):
@@ -57,12 +59,33 @@ def tool_order(outputs):
 
 
 def no_off_topic_lookup(outputs):
-    tools = [event for event in outputs["trajectory"]["tools"] if event["on_topic"] is not None]
+    tools = [event for event in outputs["trajectory"]["tools"]
+             if event["origin"] in {"model", "declared"} and event["on_topic"] is not None]
     return all(event["on_topic"] for event in tools) if tools else None
 
 
 def model_calls(outputs):
     return {"key": "model_calls", "score": outputs["trajectory"]["model_calls"]}
+
+
+def model_initiated_lookups(outputs):
+    origins = [event["origin"] for event in outputs["trajectory"]["tools"] if event["origin"] is not None]
+    return origins.count("model") / len(origins) if origins else None
+
+
+def nominated_job(outputs, reference_outputs):
+    if "nominated_job_ids" not in outputs:
+        return None  # The legacy graph did not expose its pre-guard nominations.
+    ids = outputs.get("nominated_job_ids")
+    if "candidates" in reference_outputs:
+        expected = reference_outputs["candidates"]
+    elif reference_outputs.get("job") is not None:
+        expected = [reference_outputs["job"]]
+    elif "job" in reference_outputs and ids is not None:
+        expected = []
+    else:
+        return None
+    return ids is not None and set(ids) == set(expected)
 
 
 def intake_urgency(outputs, reference_outputs):
@@ -78,12 +101,17 @@ def retrieval_recall_at_3(outputs):
     return None
 
 
-def reply_grounded(outputs):
+def reply_grounded(outputs, reference_outputs):
+    if not outputs.get("reply"):
+        return False if reference_outputs.get("reply_grounded") else None
     if not outputs.get("reply_sources"):
-        return None
+        if not reference_outputs.get("reply_grounded"):
+            return None
+        from halldesk.replies import grounded_reply_facts
+        return grounded_reply_facts(outputs["reply"], outputs.get("job_record"))
     from halldesk.replies import grounded_reply
     return grounded_reply(outputs["reply"], outputs["reply_sources"], outputs["section_ids"], outputs.get("job_record"))
 
 
 CORE = (route, urgency, job, category, priority_deadline, issues, no_write_before_approval, evidence_is_verbatim, model_completed)
-TRAJECTORY = (tools_called, tool_order, no_off_topic_lookup, model_calls)
+TRAJECTORY = (tools_called, tool_order, no_off_topic_lookup, model_calls, model_initiated_lookups, nominated_job)
