@@ -7,6 +7,12 @@ from functools import lru_cache
 from math import log1p
 from pathlib import Path
 
+from langchain_core.documents import Document
+from langsmith import traceable
+
+from halldesk.context import STOP, SYNONYMS
+
+
 HANDBOOK = Path(__file__).with_name("handbook")
 
 
@@ -18,7 +24,13 @@ class Section:
 
 
 def tokenize(text):
-    return re.findall(r"[^\W_]+", text.casefold())
+    terms = []
+    for term in re.findall(r"[^\W_]+", text.casefold()):
+        if term in STOP:
+            continue
+        singular = term[:-1] if len(term) > 3 and term.endswith("s") and not term.endswith(("ss", "us", "is")) else term
+        terms.append(SYNONYMS.get(term, SYNONYMS.get(singular, singular)))
+    return terms
 
 
 class BM25:
@@ -28,7 +40,7 @@ class BM25:
         self.average = max(sum(self.lengths.values()) / max(len(self.lengths), 1), 1)
         self.frequencies = Counter(term for doc in self.documents.values() for term in doc)
 
-    def search(self, query, limit=3):
+    def search(self, query, limit=3, *, min_score=0):
         if limit < 1:
             return []
         terms = set(tokenize(query))
@@ -41,7 +53,7 @@ class BM25:
                 * 2.2 * document[term] / (document[term] + norm)
                 for term in sorted(terms & document.keys())
             )
-            if score > 0:
+            if score > min_score:
                 scores.append((key, score))
         return sorted(scores, key=lambda row: (-row[1], row[0]))[:limit]
 
@@ -59,6 +71,11 @@ def handbook_index():
     return sections, BM25({key: f"{row.title} {row.text}" for key, row in sections.items()})
 
 
+@traceable(name="search_handbook", run_type="retriever", process_outputs=lambda documents: {
+    "documents": [document.model_dump() for document in documents],
+})
 def search_handbook(query, limit=3):
     sections, index = handbook_index()
-    return [sections[key] for key, _ in index.search(query, limit)]
+    matches = (sections[key] for key, _ in index.search(query, limit, min_score=2.0))
+    return [Document(id=section.id, page_content=section.text,
+                     metadata={"id": section.id, "title": section.title}) for section in matches]

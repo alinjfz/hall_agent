@@ -1,7 +1,8 @@
 import os
+from atexit import register
+from functools import lru_cache
 
 import httpx
-
 from langchain_core.runnables import RunnableLambda
 from langchain_openai import ChatOpenAI
 from openai import APIConnectionError
@@ -13,23 +14,16 @@ class TransientModelError(RuntimeError):
     pass
 
 
-class LocalAsyncClient(httpx.AsyncClient):
-    """A connection pool owned by one graph invocation."""
-
-
-async def close_owned_model(model):
-    if isinstance(model, ModelWithFallback):
-        await close_owned_model(model.primary)
-        await close_owned_model(model.fallback)
-        return
-    client = getattr(model, "http_async_client", None)
-    if isinstance(client, LocalAsyncClient):
-        await client.aclose()
+def model_timeout(exc):
+    if isinstance(exc, TransientModelError) and exc.__cause__:
+        exc = exc.__cause__
+    return (isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.casefold()
+            or getattr(exc, "status_code", None) in {408, 504})
 
 
 def transient_error(exc):
     status = getattr(exc, "status_code", None)
-    return (isinstance(exc, (TransientModelError, TimeoutError, APIConnectionError))
+    return (isinstance(exc, (TransientModelError, APIConnectionError)) or model_timeout(exc)
             or status == 429 or isinstance(status, int) and status >= 500)
 
 
@@ -53,8 +47,15 @@ def setup_issue(provider):
     return "Set HALL_PROVIDER to lmstudio, openai, or vertex."
 
 
-def openai_model(name):
-    return ChatOpenAI(model=name, use_responses_api=True, timeout=30, max_retries=1)
+def openai_model(name, *, timeout):
+    return ChatOpenAI(model=name, use_responses_api=True, timeout=timeout, max_retries=0)
+
+
+@lru_cache(maxsize=1)
+def local_http_client():
+    client = httpx.Client(trust_env=False)
+    register(client.close)
+    return client
 
 
 def lmstudio_model(name, *, timeout=18):
@@ -63,44 +64,41 @@ def lmstudio_model(name, *, timeout=18):
         model=name, base_url=os.getenv("HALL_LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1",
         api_key=os.getenv("HALL_LM_STUDIO_API_KEY") or "lm-studio",
         use_responses_api=False, temperature=0, timeout=timeout, max_retries=0, max_tokens=650,
-        http_async_client=LocalAsyncClient(timeout=timeout, trust_env=False),
+        http_client=local_http_client(),
         extra_body={"chat_template_kwargs": {"enable_thinking": False},
                     "reasoning_effort": "none"} if qwen else None,
     )
 
 
-class ModelWithFallback:
-    def __init__(self, primary, fallback):
-        self.model_name = primary.model_name
-        self.primary = primary
-        self.fallback = fallback
+def structured_model(model, schema, **kwargs):
+    if not isinstance(model, tuple):
+        return model.with_structured_output(schema, **kwargs)
 
-    def with_structured_output(self, schema, **kwargs):
-        primary = self.primary.with_structured_output(schema, **kwargs)
-        fallback = self.fallback.with_structured_output(schema, **kwargs)
+    primary, fallback = (item.with_structured_output(schema, **kwargs) for item in model)
 
-        async def invoke(messages, config):
-            try:
-                return await primary.ainvoke(messages, config)
-            except Exception as exc:
-                if transient_error(exc):
-                    raise TransientModelError(type(exc).__name__) from exc
-                raise
+    def invoke(messages, config):
+        try:
+            return primary.invoke(messages, config)
+        except Exception as exc:
+            if transient_error(exc):
+                raise TransientModelError(type(exc).__name__) from exc
+            raise
 
-        return RunnableLambda(invoke).with_fallbacks([fallback], exceptions_to_handle=(TransientModelError,))
+    return RunnableLambda(invoke).with_fallbacks([fallback], exceptions_to_handle=(TransientModelError,))
 
 
-def triage_model():
+def triage_model(*, timeout=20):
     provider = configured_provider()
     if issue := setup_issue(provider):
         raise ValueError(issue)
     name = model_id(provider, os.getenv("HALL_MODEL"))
     if provider == "lmstudio":
-        primary = lmstudio_model(name)
         fallback = os.getenv("HALL_FALLBACK_MODEL")
-        return ModelWithFallback(primary, lmstudio_model(fallback)) if fallback and fallback != name else primary
+        if fallback and fallback != name:
+            return lmstudio_model(name, timeout=timeout / 2), lmstudio_model(fallback, timeout=timeout / 2)
+        return lmstudio_model(name, timeout=timeout)
     if provider == "openai":
-        return openai_model(name)
+        return openai_model(name, timeout=timeout)
 
     from google.auth import default
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -110,5 +108,5 @@ def triage_model():
         model=name, vertexai=True, credentials=credentials,
         project=os.environ["GOOGLE_CLOUD_PROJECT"],
         location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
-        timeout=30, max_retries=1,
+        timeout=timeout, max_retries=1,
     )

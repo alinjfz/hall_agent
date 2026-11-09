@@ -22,7 +22,7 @@ def same_policy(current, proposed):
             == {key: value for key, value in proposed.items() if key != "source"})
 
 
-@traceable(name="retrieve_policy", run_type="retriever")
+@traceable(name="retrieve_policy")
 def retrieve_policy():
     """Retrieve the approved policy sections for the supported workflow."""
     path = Path(os.getenv("HALL_POLICY_FILE") or Path(__file__).with_name("rules.json"))
@@ -72,12 +72,12 @@ STOP = {"a", "an", "and", "can", "has", "have", "i", "in", "is", "it", "keeps", 
         "on", "please", "the", "this", "to", "was", "will", "with"}
 SYNONYMS = {"faucet": "tap", "dripping": "drip", "drips": "drip", "bulb": "light",
             "broken": "failed", "stopped": "failed", "broke": "failed", "fix": "repair",
-            "bedroom": "room", "radiators": "radiator"}
+            "bedroom": "room", "radiators": "radiator", "leaking": "leak"}
 
 
 def normalized_terms(message):
     from halldesk.retrieval import tokenize
-    return {SYNONYMS.get(term, term) for term in tokenize(message) if term not in STOP}
+    return set(tokenize(message))
 
 
 def similar_messages(message, others):

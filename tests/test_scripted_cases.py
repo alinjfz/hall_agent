@@ -60,7 +60,7 @@ def evaluate(case, model=None):
         report = store.report(report_id)
         before = store.jobs()
         if model is None and "script" in case:
-            model = scripted(report["location"], case["topic"], case["script"])
+            model = scripted(report["location"], case["topic"], case["script"], safety=case.get("safety"))
         proposal = triage(store, report_id, model=model)
         actual = proposal["kind"]
         checks = {"route": actual == case["kind"], "triage_is_read_only": store.jobs() == before,

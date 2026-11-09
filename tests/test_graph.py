@@ -1,4 +1,3 @@
-import asyncio
 from time import monotonic
 
 import pytest
@@ -7,6 +6,7 @@ from langchain_core.runnables import RunnableLambda
 from halldesk import graph
 from halldesk.context import retrieve_policy
 from halldesk.replies import grounded_reply
+from halldesk.safety import SafetyCheck
 from halldesk.store import ReviewError, Store
 from halldesk.workflow import review, triage
 
@@ -25,22 +25,29 @@ def test_emergency_is_ready_at_intake_and_records_only_one_reply(tmp_path):
     assert sum(row["event"] == "emergency_reply" for row in store.activity(report_id)) == 1
 
 
-def test_slow_model_cannot_extend_triage_deadline(tmp_path, monkeypatch):
-    class SlowModel:
-        def with_structured_output(self, *args, **kwargs):
-            async def wait(_):
-                await asyncio.sleep(5)
-            return RunnableLambda(wait)
+@pytest.mark.parametrize("bad_evidence", [False, True])
+def test_unverified_safety_goes_to_urgent_review(tmp_path, bad_evidence):
+    from halldesk.interpretation import Interpretation
 
-    monkeypatch.setattr(graph, "DEADLINE_SECONDS", 0.05)
+    class Model:
+        def with_structured_output(self, schema, **kwargs):
+            def answer(_):
+                if schema is SafetyCheck:
+                    if bad_evidence:
+                        return SafetyCheck(hazard="fire", evidence="fabricated quote")
+                    raise TimeoutError
+                return {"parsed": Interpretation(intent="new", category="heating", fitting="radiator",
+                                                 evidence="radiator is cold")}
+            return RunnableLambda(answer)
+
     store = Store(tmp_path / "workspace.sqlite3")
     store.seed(samples=False)
     report_id = store.add_report("Flat 1", "Repair", "My radiator is cold.")
-    before = monotonic()
-    proposal = triage(store, report_id, model=SlowModel())
-    assert proposal["kind"] == "manual" and proposal["reason"] == "timed out"
-    assert monotonic() - before < 2
+    proposal = triage(store, report_id, model=Model())
+    assert proposal["kind"] == "manual" and proposal["urgency"] == "urgent"
+    assert proposal["signals"] == ["unverified_safety"]
     assert store.report(report_id)["triage_attempts"] == 1
+    assert not store.jobs()
 
 
 def test_approved_guidance_retires_after_its_rule_changes(tmp_path):
@@ -89,8 +96,10 @@ def test_transient_model_failure_retries_without_creating_a_job(tmp_path):
     class FlakyModel:
         calls = 0
 
-        def with_structured_output(self, *args, **kwargs):
-            async def answer(_):
+        def with_structured_output(self, schema, **kwargs):
+            if schema is SafetyCheck:
+                return RunnableLambda(lambda _: SafetyCheck(hazard=None, evidence=None))
+            def answer(_):
                 self.calls += 1
                 if self.calls == 1:
                     raise TransientModelError("temporary")
@@ -151,51 +160,43 @@ def test_staff_can_review_after_publish_checkpoint_is_interrupted(tmp_path, monk
     assert len(store.jobs()) == 1
 
 
-@pytest.mark.parametrize("followup", ["normal", "near_deadline", "disabled"])
-def test_declared_lookup_can_inform_one_guarded_followup(tmp_path, monkeypatch, followup):
+def test_interpretation_receives_jobs_and_defaults_to_handbook_search(tmp_path):
     import json
 
     from langsmith import trace, tracing_context
-    from evals.evaluators import model_initiated_lookups, no_off_topic_lookup
-    from evals.run import local_trace_client, read_trace
+    from evals.run import descendants, local_trace_client
     from halldesk.interpretation import Interpretation
 
     store = Store(tmp_path / "workspace.sqlite3")
     store.seed()
     report = store.report(1)
-    jobs = store.jobs(report["location"])
-    assert jobs
+    context = graph.retrieve_context(store, report)
+    assert context["jobs"]
+    context["job_reports"] = {101: {"message": "private report text"}}
     seen = []
-    monkeypatch.setenv("HALL_LOOKUP_FOLLOWUP", "false" if followup == "disabled" else "true")
 
     class Model:
         def with_structured_output(self, schema, *, tools=None, **kwargs):
-            async def answer(messages):
-                seen.append((tools, list(messages)))
-                if len(seen) == 1:
-                    return {"parsed": Interpretation(intent="chase", evidence=report["message"], look_up_jobs=True)}
-                assert tools is None
-                payload = json.loads(messages[-1].content.split("\n", 1)[1])
-                assert payload["get_open_jobs"] == jobs
+            def answer(messages):
+                seen.append(tools)
+                payload = json.loads(messages[-1].content)
+                assert payload["open_jobs"] == context["jobs"]
+                assert "private report text" not in messages[-1].content
                 return {"parsed": Interpretation(intent="chase", candidate_ids=[99999])}
             return RunnableLambda(answer)
 
     with tracing_context(enabled="local", client=local_trace_client()), trace("test") as root:
-        parsed, _, nominated = asyncio.run(graph.interpret_with_tools(
-            Model(), report, store, [], monotonic() + (4 if followup == "near_deadline" else 20)))
-    trajectory, _ = read_trace(root, (), ("quiet-hours",), report["location"], 0)
-    assert [(tool["name"], tool["origin"]) for tool in trajectory["tools"]] == [
-        ("get_open_jobs", "declared"), ("search_policy", "default")]
-    assert trajectory["tools"][1]["on_topic"] is False
-    assert no_off_topic_lookup({"trajectory": trajectory}) is True
-    assert model_initiated_lookups({"trajectory": trajectory}) == 0
-    assert len(seen) == (2 if followup == "normal" else 1)
-    if followup == "normal":
-        assert nominated == [99999]
-        assert parsed.candidate_ids == []
+        parsed, sections, nominated = graph.interpret_with_tools(
+            lambda **_: Model(), report, context, monotonic() + 20)
+    assert len(seen) == 1 and [tool.name for tool in seen[0]] == ["search_policy"]
+    assert nominated == [99999] and parsed.candidate_ids == []
+    assert sections[0]["id"] == "chasing-repairs"
+    search = next(node for node in descendants(root) if node.name == "search_handbook")
+    assert search.run_type == "retriever"
+    assert search.outputs["documents"][0]["page_content"] == sections[0]["text"]
 
 
-@pytest.mark.parametrize(("failure", "call_count"), [("unknown", 1), ("too_many", 1), ("extra_round", 3)])
+@pytest.mark.parametrize(("failure", "call_count"), [("unknown", 1), ("too_many", 1), ("extra_round", 2)])
 def test_tool_loop_fails_closed(tmp_path, failure, call_count):
     from langchain_core.messages import AIMessage
 
@@ -206,22 +207,22 @@ def test_tool_loop_fails_closed(tmp_path, failure, call_count):
 
     class Model:
         def with_structured_output(self, schema, *, tools=None, **kwargs):
-            async def answer(messages):
+            def answer(messages):
                 bindings.append(tools)
                 calls = [
                     {"name": "unknown" if failure == "unknown" else "search_policy",
-                     "args": {"query": "heating"}, "id": f"r{len(bindings)}-{index}"}
+                     "args": {"query": "heating faults"}, "id": f"r{len(bindings)}-{index}"}
                     for index in range(5 if failure == "too_many" else 1)
                 ]
                 return {"raw": AIMessage(content="", tool_calls=calls)}
             return RunnableLambda(answer)
 
-    parsed, sections, nominated = asyncio.run(graph.interpret_with_tools(
-        Model(), report, store, [], monotonic() + 20))
+    parsed, sections, nominated = graph.interpret_with_tools(
+        lambda **_: Model(), report, graph.retrieve_context(store, report), monotonic() + 20)
     assert parsed is nominated is None
     assert len(bindings) == call_count
     if failure == "extra_round":
-        assert all(bindings[:2]) and bindings[2] is None
+        assert bindings[0] and bindings[1] is None
         assert sections
     else:
         assert not sections

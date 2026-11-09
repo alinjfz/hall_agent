@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import httpx
 from langchain_core.messages import AIMessage
-from langchain_openai import ChatOpenAI
 
 from tests.test_scripted_cases import evaluate
 from halldesk.context import relevant_examples, retrieve_policy
@@ -35,22 +34,23 @@ def test_policy_and_guidance():
         def respond(request):
             payload = json.loads(request.content)
             requests.append(payload)
+            schema = payload["response_format"]["json_schema"]["name"]
+            answer = {"hazard": None, "evidence": None} if schema == "SafetyCheck" else {
+                "intent": "new", "category": "lighting", "candidate_ids": [], "evidence": "ceiling light",
+                "fitting": "ceiling light", "other_lighting_works": None, "lighting_evidence": None,
+            }
             return httpx.Response(200, json={
                 "id": "local-test", "object": "chat.completion", "created": 1, "model": "test-gemma",
                 "choices": [{"index": 0, "finish_reason": "stop", "message": {
-                    "role": "assistant", "content": json.dumps({
-                        "intent": "new", "category": "lighting", "candidate_ids": [], "evidence": "ceiling light",
-                        "fitting": "ceiling light", "other_lighting_works": None, "lighting_evidence": None,
-                    }),
+                    "role": "assistant", "content": json.dumps(answer),
                 }}],
             })
 
         env = {"HALL_PROVIDER": "lmstudio", "HALL_LM_STUDIO_MODEL": "test-gemma", "HALL_MODEL": "",
                "HALL_LM_STUDIO_BASE_URL": "http://127.0.0.1:1234/v1", "HALL_POLICY_FILE": ""}
-        async_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
         with httpx.Client(transport=httpx.MockTransport(respond)) as client, \
              patch.dict("os.environ", env), \
-             patch("halldesk.models.ChatOpenAI", side_effect=lambda **kw: ChatOpenAI(http_client=client, **(kw | {"http_async_client": async_client}))):
+             patch("halldesk.models.local_http_client", return_value=client):
             case = store.eval_cases("holdout")[0]
             score = evaluate(case["expected"] | {"snapshot": case["snapshot"], "name": case["name"],
                                                  "guidance": store.eval_cases("guidance")})
@@ -59,16 +59,18 @@ def test_policy_and_guidance():
             assert {"LIGHTING-1", "HEATING-1", "APPLIANCE-1", "ACCESS-1", "MULTIPLE-1"} <= {
                 rule["id"] for rule in score["retrieval"]["policies"]
             }
-            assert requests[0]["response_format"]["type"] == "json_schema"
-            assert requests[0]["model"] == "test-gemma"
-            assert {tool["function"]["name"] for tool in requests[0]["tools"]} == {"search_policy", "get_open_jobs"}
-            assert "LIGHTING-1" not in requests[0]["messages"][-1]["content"]
-            assert "The wall light stopped working" in requests[0]["messages"][-1]["content"]
+            request = next(request for request in requests if request.get("tools"))
+            assert request["response_format"]["type"] == "json_schema"
+            assert request["model"] == "test-gemma"
+            assert {tool["function"]["name"] for tool in request["tools"]} == {"search_policy"}
+            assert "LIGHTING-1" not in request["messages"][-1]["content"]
+            assert "The wall light stopped working" in request["messages"][-1]["content"]
             store.decide_eval(1, "retired")
             second_id = store.add_report("Flat 2", "Another repair", store.report(holdout)["message"])
             result = triage(store, second_id)
             assert not result["retrieval"]["example_ids"]
-            assert "The wall light stopped working" not in requests[-1]["messages"][-1]["content"]
+            assert "The wall light stopped working" not in next(
+                request for request in reversed(requests) if request.get("tools"))["messages"][-1]["content"]
             assert store.jobs() == []
 
         with patch.dict("os.environ", {"HALL_POLICY_FILE": str(Path(directory) / "missing.json")}):

@@ -86,7 +86,7 @@ def descendants(run):
         yield from descendants(child)
 
 
-def read_trace(run, topics, expected_sections, location, provider_calls):
+def read_trace(run, topics, expected_sections, provider_calls):
     runs = sorted(descendants(run), key=lambda node: (node.start_time, node.dotted_order))
     tools, evidence = [], []
     for node in runs:
@@ -105,8 +105,6 @@ def read_trace(run, topics, expected_sections, location, provider_calls):
                         on_topic = bool({section["id"] for section in json.loads(payload)} & set(expected_sections))
                     except (TypeError, ValueError, KeyError):
                         pass
-            if node.name == "get_open_jobs" and node.inputs.get("location"):
-                on_topic = node.inputs["location"].casefold() == location.casefold()
             origin = (node.extra or {}).get("metadata", {}).get("lookup_origin")
             tools.append({"name": node.name, "origin": origin, "topic": topic, "query": query, "on_topic": on_topic})
         if node.name == "apply_policy":
@@ -114,9 +112,11 @@ def read_trace(run, topics, expected_sections, location, provider_calls):
             if hasattr(interpretation, "model_dump"):
                 interpretation = interpretation.model_dump()
             if isinstance(interpretation, dict):
-                evidence.extend(interpretation[key] for key in ("evidence", "lighting_evidence", "safety_evidence")
+                evidence.extend(interpretation[key] for key in ("evidence", "lighting_evidence")
                                 if interpretation.get(key))
                 evidence.extend(interpretation.get("issues") or [])
+        if node.name == "check_safety" and (quote := (node.outputs or {}).get("safety_evidence")):
+            evidence.append(quote)
     passes = [node for node in runs if node.name == "interpretation_pass"]
     state_errors = [node.outputs.get("model_error") for node in runs if node.name == "interpret" and node.outputs]
     failure = (next((error for error in state_errors if error), "") if state_errors
@@ -151,7 +151,7 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
                 proposal = triage(store, report_id, model=model, **options)
         finally:
             callback_tracer.reset(token)
-        trajectory, evidence = read_trace(root, topics, expected_sections, inputs["location"], counter.count)
+        trajectory, evidence = read_trace(root, topics, expected_sections, counter.count)
         reports = store.reports()
         no_writes = (before == store.jobs() and len(reports) == 1 and not reports[0]["result"]
                      and not any(row["event"] in {"reply_approved", "review_complete"}
@@ -294,12 +294,8 @@ def main():
     parser.add_argument("--judge", action="store_true", help="Score drafted replies with the separate LM Studio model")
     parser.add_argument("--curated", type=Path, help="Approved holdouts and guidance exported by evals.curation")
     parser.add_argument("--without-guidance", action="store_true")
-    parser.add_argument("--without-lookup-followup", action="store_true", help="Disable the optional interpretation turn")
     parser.add_argument("--against", type=Path, help="Fail when a case regresses from a complete, comparable run")
     args = parser.parse_args()
-    if args.without_lookup_followup:
-        os.environ["HALL_LOOKUP_FOLLOWUP"] = "false"
-    lookup_followup = not legacy and os.getenv("HALL_LOOKUP_FOLLOWUP", "true").lower() == "true"
     if not legacy and args.passes != "single":
         parser.error("The production graph uses one structured interpretation.")
     if args.agent:
@@ -381,7 +377,7 @@ def main():
         experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,
         upload_results=hosted, blocking=False, metadata={"model": agent, "provider": provider, "passes": args.passes,
                                          "dataset_version": version, "dataset_sha256": fingerprint,
-                                         "lookup_followup": lookup_followup, "guidance_examples": len(guidance)},
+                                         "guidance_examples": len(guidance)},
     )
     rows = []
     partial_path = args.output.with_suffix(".partial.jsonl") if args.output else None
@@ -451,7 +447,7 @@ def main():
                if (score := evaluators.retrieval_recall_at_3(row["actual"])) is not None]
     summary = {"suite": args.suite, "provider": provider, "model": agent, "passes": args.passes,
                "repetitions": REPETITIONS, "dataset": DATASET_NAMES[args.suite], "dataset_version": version,
-               "guidance_examples": len(guidance), "lookup_followup": lookup_followup,
+               "guidance_examples": len(guidance),
                "interpretation": interpretation,
                "dataset_sha256": fingerprint, "experiment_url": experiment.url if hosted else None,
                "slices": slices, "safety": safety, "safety_by_case": safety_by_case,

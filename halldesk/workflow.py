@@ -2,7 +2,6 @@
 
 import logging
 from datetime import date
-from functools import lru_cache
 from uuid import NAMESPACE_URL, uuid5
 
 from langgraph.types import Command
@@ -10,7 +9,7 @@ from langsmith import traceable, tracing_context
 from langsmith.utils import tracing_is_enabled
 
 from halldesk.context import search_rules
-from halldesk.graph import GRAPH_VERSION, PROMPT_HASH, production_graph, retrieve_context, revision_thread
+from halldesk.graph import GRAPH_VERSION, PROMPT_HASH, graph, production_config, retrieve_context, revision_thread
 from halldesk.models import triage_model
 from halldesk.policy import build_proposal
 from halldesk.proposals import parse_proposal
@@ -50,14 +49,11 @@ def triage(store, report_id, model=None, *, claim=None):
 
 @traceable(name="triage_report")
 def _triage(store, report, model=None):
-    config = {"configurable": {"thread_id": revision_thread(report["id"], report["version"] + 1)}}
-    @lru_cache(maxsize=1)
-    def factory():
-        return triage_model() if model is None else model
-
-    with production_graph(store, factory, draft_replies=model is None) as graph:
-        state = graph.invoke({"report_id": report["id"], "expected_version": report["version"],
-                              "expected_claim": report["triage_claim"]}, config, durability="sync")
+    factory = triage_model if model is None else lambda **_: model
+    config = production_config(store, revision_thread(report["id"], report["version"] + 1),
+                               hall_model_factory=factory, hall_draft_replies=model is None)
+    state = graph.invoke({"report_id": report["id"], "expected_version": report["version"],
+                          "expected_claim": report["triage_claim"]}, config, durability="sync")
     return state["proposal"]
 
 
@@ -70,20 +66,19 @@ def _decision(store, report, version, action, **values):
         thread_id = revision_thread(report["id"], version)
     if action == "reply" and report["result"]:
         thread_id += "-reply"
-    config = {"configurable": {"thread_id": thread_id}}
-    with production_graph(store, triage_model) as graph:
-        snapshot = graph.get_state(config)
-        if not snapshot.values:
-            graph.invoke({"report_id": report["id"], "existing": True}, config, durability="sync")
-        elif not snapshot.interrupts and snapshot.next:
-            graph.invoke(None, config, durability="sync")
-        elif not snapshot.interrupts:
-            if action == "finish":
-                return store.finish(report["id"], version, values["decision"], search_rules,
-                                    followup=values.get("followup", ""), reviewer_id=values.get("reviewer_id"))
-            raise ReviewError("Review changed. Reload the report.")
-        result = graph.invoke(Command(resume={"action": action, "version": version, **values}),
-                              config, durability="sync")
+    config = production_config(store, thread_id)
+    snapshot = graph.get_state(config)
+    if not snapshot.values:
+        graph.invoke({"report_id": report["id"], "existing": True}, config, durability="sync")
+    elif not snapshot.interrupts and snapshot.next:
+        graph.invoke(None, config, durability="sync")
+    elif not snapshot.interrupts:
+        if action == "finish":
+            return store.finish(report["id"], version, values["decision"], search_rules,
+                                followup=values.get("followup", ""), reviewer_id=values.get("reviewer_id"))
+        raise ReviewError("Review changed. Reload the report.")
+    result = graph.invoke(Command(resume={"action": action, "version": version, **values}),
+                          config, durability="sync")
     if result.get("error"):
         raise ReviewError(result["error"])
     return result

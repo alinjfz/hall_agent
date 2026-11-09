@@ -36,7 +36,7 @@ def test_chase_review_and_replay(monkeypatch):
 
         with patch.object(Client, "create_run"), patch.object(Client, "update_run"), \
              patch.object(models, "setup_issue", return_value=None), \
-             patch.object(workflow, "triage_model", side_effect=lambda: scripted(
+             patch.object(workflow, "triage_model", return_value=scripted(
             "Juniper Court / Flat 12 kitchen", "escalation",
             {"intent": "chase", "candidate_ids": [101], "evidence": "ceiling light"},
         )), \

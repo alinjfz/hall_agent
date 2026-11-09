@@ -14,7 +14,7 @@ def manual(reason):
     return {"kind": "manual", "reason": reason}
 
 
-def urgent_proposal(report, policies, jobs, signals):
+def urgent_proposal(report, policies, jobs, signals, *, evidence=None):
     if not signals:
         return None
     replies = []
@@ -37,6 +37,8 @@ def urgent_proposal(report, policies, jobs, signals):
         if "fire_equipment" in signals and topic == "urgent":
             topic = "fire"
     proposal = manual("Emergency response needed now." if emergency else "Urgent staff handling needed now.")
+    if "unverified_safety" in signals:
+        proposal["reason"] = "Safety could not be verified. Review this report first."
     destination = policies.get(topic, {}).get("destination") if emergency or topic != "fire" else None
     proposal.update(urgency="emergency" if emergency else "urgent", reply="\n\n".join(replies),
                     signals=sorted(signals), destination=destination or "On-duty residence staff")
@@ -46,17 +48,21 @@ def urgent_proposal(report, policies, jobs, signals):
     mentioned_ids = {
         int(job_id) for job_id in re.findall(r"\b(?:job|repair)\s*#?\s*(\d{1,12})\b", message, re.I)
     }
-    matching = [job for job in jobs or [] if job["id"] in mentioned_ids or re.search(
+    matching = [job for job in jobs if job["id"] in mentioned_ids or re.search(
         rf"(?<!\w){re.escape(job['fitting'])}(?!\w)", message, re.I)]
     if matching:
         proposal["related_jobs"] = matching
         proposal["evidence"] = message
+    if evidence:
+        proposal["evidence"] = evidence
     # Keep the urgent path independent of the model. Staff can choose which
     # excerpts are separate issues when they acknowledge the urgent handoff.
     excerpts = re.split(r"(?<=[.!?])\s+|\n+|(?<=,)\s+(?:and|but)\s+", message, flags=re.I)
     proposal["followup_suggestions"] = [
         excerpt.strip() for excerpt in excerpts
         if excerpt.strip() and excerpt.strip() != message.strip() and not safety_signals(excerpt)
+        and (not evidence or (evidence not in excerpt and excerpt.strip() not in evidence))
+        and "unverified_safety" not in signals
     ][:4]
     return proposal
 
@@ -101,23 +107,21 @@ def repair_proposal(report, fitting, other_works, rule, category="lighting", *, 
 def apply_policy(report, interpretation, jobs, policies, now, job_reports=None):
     message = report["message"]
     evidence = interpretation.evidence
-    if proposal := urgent_proposal(report, policies, jobs, safety_signals(message)):
-        return proposal
-    if interpretation.safety_issue:
-        if interpretation.safety_evidence and interpretation.safety_evidence in message:
-            return urgent_proposal(report, policies, jobs, {interpretation.safety_issue})
-        return manual("The residence duty reviewer needs to verify a possible safety issue.")
     if evidence and (not evidence.strip() or evidence not in message):
         return manual("The quoted evidence was not found in the report.")
+    if evidence.strip() and (interpretation.power_scope == "area" or interpretation.leak_contained is False):
+        return urgent_proposal(report, policies, jobs, {"building_hazard"}, evidence=evidence)
     if interpretation.intent == "multiple":
         return handle_multiple(report, interpretation, policies)
-    if (interpretation.intent == "access" or interpretation.category in {"lockout", "spare_key"}
-            or re.search(r"\b(?:spare|replacement|extra) key\b", message, re.I)):
+    if interpretation.intent == "access" or interpretation.category in {"lockout", "spare_key"}:
         return handle_access(report, interpretation, jobs, policies)
+    if interpretation.power_scope == "unknown" and (rule := policies.get("urgent")):
+        return {"kind": "power_question", "rule": rule,
+                "question": "Has the whole flat or affected area lost power, or just one fitting?"}
     if interpretation.intent == "manual":
         return manual("The residence duty reviewer needs to assess the reported issue.")
-    if jobs is None or not evidence.strip():
-        return manual("The interpretation lacks a verified lookup or evidence from the report.")
+    if not evidence.strip():
+        return manual("The interpretation lacks verified evidence from the report.")
     if interpretation.intent == "new":
         return handle_repair(report, interpretation, jobs, policies, now, job_reports)
     return handle_chase(interpretation, jobs, policies, now)
@@ -139,18 +143,13 @@ def handle_multiple(report, interpretation, policies):
     return {"kind": "split", "issues": issues, "rule": rule}
 
 
-def access_restored(message):
-    return bool(re.search(r"\b(?:back inside|back in now|inside now|can (?:still )?get in)\b", message, re.I))
-
-
 def handle_access(report, interpretation, jobs, policies):
-    message, evidence = report["message"], interpretation.evidence
-    has_access = access_restored(message)
-    if interpretation.category == "lockout" and evidence.strip() and evidence in message:
-        if not has_access:
-            return urgent_proposal(report, policies, jobs, {"lockout"})
+    evidence = interpretation.evidence
+    has_access = interpretation.can_access_now
+    if has_access is False and evidence.strip():
+        return urgent_proposal(report, policies, jobs, {"lockout"}, evidence=evidence)
     rule = policies.get("access")
-    if rule and interpretation.category == "lockout" and not has_access:
+    if rule and interpretation.category == "lockout" and has_access is not True:
         return {"kind": "access_question", "question": "Can the resident get into their room or flat now?", "rule": rule}
     proposal = manual("Refer this access request to residence staff for identity and access checks.")
     if rule:
@@ -189,20 +188,15 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
         if duplicate_rule := policies.get("duplicate"):
             proposal["rule"] = duplicate_rule
         return proposal
-    if category == "plumbing":
-        if not re.search(r"\b(?:tap|shower)\b", fitting, re.I):
-            return manual("Confirm the source and severity of the leak before proposing a repair.")
-        if not re.search(r"\bdrip(?:s|ping)?\b", evidence, re.I):
-            if rule and (question := rule.get("clarification_question")):
-                return {"kind": "plumbing_question", "fitting": fitting, "rule": rule, "question": question}
-            return manual("Confirm the severity of the leak before proposing a repair.")
+    if category == "plumbing" and interpretation.leak_contained is not True:
+        if rule and (question := rule.get("clarification_question")):
+            return {"kind": "plumbing_question", "fitting": fitting, "rule": rule, "question": question}
+        return manual("Confirm the severity of the leak before proposing a repair.")
     if category != "lighting":
         return repair_proposal(report, fitting, None, rule, category)
     if not rule:
         return manual("The lighting priority policy could not be verified.")
-    lighting_evidence = interpretation.lighting_evidence or ""
-    portable = re.search(r"\b(?:torch|flashlight|(?:desk|floor|table|portable) lamp|phone light)\b", lighting_evidence, re.I)
-    if interpretation.other_lighting_works is None or (interpretation.other_lighting_works and portable):
+    if interpretation.other_lighting_works is None:
         return {"kind": "lighting_question", "fitting": fitting, "rule": rule,
                 "question": rule.get("clarification_question", "Does another light still work in the same room?")}
     if not interpretation.lighting_evidence or interpretation.lighting_evidence not in message:
@@ -246,25 +240,21 @@ def context_issue(context):
     return None
 
 
-def build_proposal(report, context, interpretation):
+def build_proposal(report, context, interpretation, *, signals=None, safety_evidence=None, model_error=""):
     policies = context["policies"]
-    proposal = urgent_proposal(report, policies, context["jobs"], safety_signals(report["message"]))
+    if signals is None:
+        signals = safety_signals(report["message"])
+    if not signals and model_error == "timed out":
+        signals = {"unverified_safety"}
+    proposal = urgent_proposal(report, policies, context["jobs"], set(signals), evidence=safety_evidence)
     if proposal is None:
         if issue := context_issue(context):
             proposal = manual(issue)
         elif interpretation is None:
-            proposal = manual("The residence duty reviewer needs to interpret this report.")
+            proposal = manual(model_error or "The residence duty reviewer needs to interpret this report.")
         else:
             proposal = apply_policy(report, interpretation, context["jobs"], policies,
                                     datetime.fromisoformat(context["at"]), context.get("job_reports"))
-    if proposal["kind"] == "manual" and not proposal.get("urgency") and policies.get("urgent"):
-        if (not context_issue(context)
-                and (interpretation is None or not interpretation.evidence
-                     or interpretation.evidence.strip() and interpretation.evidence in report["message"])
-                and proposal.get("rule", {}).get("topic") not in {"access", "duplicate"}
-                and re.search(r"\b(?:power (?:is )?out|lost power|power cut|no power)\b", report["message"], re.I)):
-            proposal = {"kind": "power_question", "rule": policies["urgent"],
-                        "question": "Has the whole flat or affected area lost power, or just one fitting?"}
     if proposal["kind"] == "manual" and policies:
         proposal.setdefault("rule", policies["review"])
         proposal.setdefault("destination", proposal["rule"].get("destination", "Residence duty reviewer"))

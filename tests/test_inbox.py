@@ -49,12 +49,16 @@ def test_inbox_review_and_job_lifecycle():
                 "intent": "new", "candidate_ids": [], "evidence": "desk light", "fitting": "desk light",
             }),
         ]
+        original_triage = workflow.triage
+        def scripted_triage(store, report_id, **kwargs):
+            return original_triage(store, report_id, model=responses.pop(0), **kwargs)
+
         with patch.dict("os.environ", {
             "HALL_DB": str(db), "LANGSMITH_TRACING": "false", "HALL_PROVIDER": "openai",
             "HALL_ENABLE_QUALITY_CHECKS": "true",
         }), \
              patch.object(models, "setup_issue", return_value=None), \
-             patch.object(workflow, "triage_model", side_effect=responses) as model:
+             patch.object(workflow, "triage", side_effect=scripted_triage) as model:
             ui = AppTest.from_file(str(Path("app.py").resolve())).run(timeout=30)
             assert not ui.exception, ui.exception
             wait_for_triage(ui, store, 2, 3)

@@ -1,4 +1,13 @@
 import re
+from typing import Literal
+
+from pydantic import BaseModel
+
+
+class SafetyCheck(BaseModel):
+    hazard: Literal["fire", "gas", "fire_equipment", "building_hazard", "dark_route",
+                    "unsafe_door", "lockout", "identifiable_key"] | None
+    evidence: str | None
 
 
 # Explicit signals take precedence over routine triage, even without a model.
