@@ -10,7 +10,7 @@ from langsmith.utils import get_tracer_project, tracing_is_enabled
 
 from unihelp.context import search_rules
 from unihelp.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, retrieve_context, revision_thread
-from unihelp.models import triage_model
+from unihelp.models import configured_provider, triage_model
 from unihelp.policy import build_proposal
 from unihelp.proposals import parse_proposal
 from unihelp.store import ReviewError
@@ -37,12 +37,13 @@ def _trace_options(**metadata):
     return options
 
 
-def triage(store, report_id, model=None, *, claim=None, draft_replies=None, deadlines=ModelDeadlines()):
+def triage(store, report_id, model=None, *, claim=None, draft_replies=None, deadlines=None):
     report = store.report(report_id)
     if report["triage_claim"] != claim:
         raise ReviewError("This report is already being triaged.")
     if report["result"] or report["proposal"]:
         return report["result"] or report["proposal"]
+    deadlines = deadlines or ModelDeadlines.for_provider(configured_provider())
     return _triage(store, report, model, draft_replies, deadlines, langsmith_extra=_trace_options(
         report_id=report_id, review_version=report["version"] + 1))
 

@@ -321,8 +321,7 @@ def main():
     if supports_deadlines:
         from unihelp.graph import ModelDeadlines
 
-        budgets = args.deadlines or ((60, 45, 45) if provider == "vertex" else ())
-        deadlines = ModelDeadlines(*budgets)
+        deadlines = ModelDeadlines(*args.deadlines) if args.deadlines else ModelDeadlines.for_provider(provider)
     deadline_metadata = asdict(deadlines) if deadlines is not None else None
     if issue := setup_issue(provider):
         parser.error(issue)

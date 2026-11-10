@@ -21,7 +21,7 @@ make eval-safety EVAL_ARGS="--langsmith hosted --output evals/results/current-sa
 
 Append `--case overdue` to run a single case after syncing the full suite. Repeat `--case` to select several. Local mode captures traces without uploading them. Use only synthetic or explicitly approved data for hosted evaluation: redaction covers some common contact details and names. Each hosted result records the experiment run ID and trace ID. Share selected synthetic runs individually if publishing evidence.
 
-Vertex evals on the current graph allow 60 seconds for interpretation, 45 for safety and 45 for drafting. Override the budgets in that order with `--deadlines`, for example `make eval EVAL_ARGS="--agent vertex --case overdue --deadlines 90 60 60"`. Results record the selected budgets. The app uses its own shorter defaults.
+Vertex uses 60 seconds for interpretation, 45 for safety and 45 for drafting in both the app and eval runner. Override the eval budgets in that order with `--deadlines`, for example `make eval EVAL_ARGS="--agent vertex --case overdue --deadlines 90 60 60"`. Results record the selected budgets.
 
 The output records nomination counts, median latency and total model calls. Nomination is scored before Python verifies the IDs and does not gate route or safety checks.
 

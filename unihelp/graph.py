@@ -7,7 +7,7 @@ passages, apply deterministic policy, then draft a cited reply from the passages
 import json
 import logging
 from atexit import register
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from hashlib import sha256
 from pathlib import Path
@@ -28,7 +28,7 @@ from langsmith import get_current_run_tree, traceable
 
 from unihelp.context import handbook_query, relevant_examples, retrieve_policy, search_rules
 from unihelp.interpretation import Interpretation
-from unihelp.models import model_timeout, structured_model, transient_error, triage_model
+from unihelp.models import configured_provider, model_timeout, structured_model, transient_error, triage_model
 from unihelp.policy import build_proposal, context_issue, identifies_fitting
 from unihelp.proposals import parse_proposal
 from unihelp.replies import ReplyDraft, grounded_reply
@@ -57,6 +57,10 @@ class ModelDeadlines:
     safety: int = 15
     drafting: int = 15
 
+    @classmethod
+    def for_provider(cls, provider):
+        return cls(60, 45, 45) if provider == "vertex" else cls()
+
 
 @dataclass
 class Context:
@@ -64,7 +68,7 @@ class Context:
     store: Any = None
     model_factory: Any = None
     draft_replies: bool = True
-    deadlines: ModelDeadlines = ModelDeadlines()
+    deadlines: ModelDeadlines = field(default_factory=lambda: ModelDeadlines.for_provider(configured_provider()))
 
 
 class State(TypedDict, total=False):
