@@ -11,7 +11,7 @@ class Interpretation(BaseModel):
         "leak_contained", "power_scope", "can_access_now",
     ]})
 
-    intent: Literal["chase", "new", "access", "multiple", "question", "manual"]
+    intent: Literal["chase", "new", "access", "multiple", "question", "manual", "out_of_scope"]
     issues: Annotated[list[str], Field(min_length=2, max_length=4)] | None = None
     candidate_ids: list[int] = []
     evidence: str = Field(default="", description="One exact, contiguous quote supporting the intent and fitting.")
@@ -23,3 +23,5 @@ class Interpretation(BaseModel):
     power_scope: Literal["fitting", "area", "unknown"] | None = None
     can_access_now: bool | None = None
     missing_facts: list[str] = Field(default_factory=list, max_length=4)
+    staff_rule_id: int | None = None
+    staff_rule_evidence: str | None = None

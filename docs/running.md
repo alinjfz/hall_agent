@@ -44,7 +44,9 @@ Interrupted experiments leave a `.partial.jsonl` file. Only complete runs are el
 
 The [curated fixture](../evals/curated.json) demonstrates the export format and how to toggle guidance. It contains one synthetic case; it is not evidence that guidance helps. The guidance example quotes its report verbatim, but both arms failed the verbatim-evidence check on the separate shower report.
 
-Set `UNIHELP_ENABLE_QUALITY_CHECKS=true` to expose the quality queue. Edits and rejections create draft cases with the report snapshot and reviewer change. Staff label the expected outcome; guidance also needs a corrected interpretation and a note. Similar reports cannot be approved in opposing sets. Guidance is retired when its recorded rule revision changes.
+Choose **Give feedback** on a report, label the expected outcome, and save it as a regression test in **Quality checks**. Edits and rejections also create drafts for review. Guidance needs a corrected interpretation and a note. Similar reports cannot be approved in opposing sets. Guidance is retired when its recorded rule revision changes.
+
+**Retry conversation** queues the selected open report for a new proposal and keeps the conversation history.
 
 ```sh
 .venv/bin/python -m evals.curation unihelp.sqlite3 /tmp/unihelp-curated.json

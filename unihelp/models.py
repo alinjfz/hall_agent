@@ -155,6 +155,16 @@ def openai_model(name, *, timeout):
 
 
 @lru_cache(maxsize=1)
+def vertex_api_key_client(api_key):
+    from google import genai
+    from google.genai.types import HttpOptions
+
+    client = genai.Client(vertexai=True, api_key=api_key, http_options=HttpOptions(api_version="v1"))
+    register(client.close)
+    return client
+
+
+@lru_cache(maxsize=1)
 def local_http_client():
     client = httpx.Client(trust_env=False)
     register(client.close)
@@ -250,11 +260,18 @@ def triage_model(*, timeout=20):
     if provider == "openai":
         return openai_model(name, timeout=timeout)
 
-    from google.auth import default
-    credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    return VertexChatModel(
+    api_key = os.getenv("GOOGLE_API_KEY")
+    credentials = None
+    if not api_key:
+        from google.auth import default
+
+        credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    model = VertexChatModel(
         model=name, vertexai=True, credentials=credentials,
         project=os.environ["GOOGLE_CLOUD_PROJECT"],
         location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
         timeout=timeout, max_retries=1,
     )
+    if api_key:
+        model.client = vertex_api_key_client(api_key)
+    return model

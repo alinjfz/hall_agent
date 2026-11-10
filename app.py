@@ -22,7 +22,6 @@ st.html(Path(__file__).with_name("unihelp") / "mail.css")
 store = Store(os.getenv("UNIHELP_DB", "unihelp.sqlite3"))
 store.seed(samples=os.getenv("UNIHELP_SEED_SAMPLE", "").lower() == "true")
 background_worker = os.getenv("UNIHELP_BACKGROUND_WORKER", "").lower() == "true"
-quality_checks_enabled = os.getenv("UNIHELP_ENABLE_QUALITY_CHECKS", "").lower() == "true"
 
 FOLDERS = ("Inbox", "Queued", "Needs review", "Handled", "Failed")
 QUEUE_STATUSES = {"Queued", "Triaging"}
@@ -307,15 +306,9 @@ def show_review(report, reports):
                 decision = "approve" if kind in {"create", "escalate", "split"} else "acknowledge"
             try:
                 review(store, report_id, version, decision, followup="" if reject else followup)
-                st.rerun()
-            except ReviewError as exc:
-                st.error(str(exc))
-                st.session_state[f"refresh-{report_id}"] = True
-        can_refresh = st.session_state.get(f"refresh-{report_id}") or (kind == "manual" and not proposal.get("urgency"))
-        if can_refresh and st.button("Refresh proposal", disabled=bool(configuration_issue)):
-            try:
-                store.requeue_review(report_id, version)
-                st.session_state.pop(f"refresh-{report_id}", None)
+                if reject:
+                    st.session_state["open_report"] = report_id
+                    st.session_state["report-dialog"] = ("quality", report_id)
                 st.rerun()
             except ReviewError as exc:
                 st.error(str(exc))
@@ -428,17 +421,25 @@ def show_evals():
     store.active_guidance(retrieve_policy())
     cases = store.eval_cases()
     if not cases:
-        st.info("No test cases yet. To create one, open a report and choose Report actions → Save as quality check.")
+        st.info("No test cases yet. Open a report and choose Give feedback to create one.")
     for case in cases:
         with st.expander(f"#{case['id']} · {markdown_text(case['name'])} · {case['status'].title()}"):
             st.text(case["snapshot"]["message"])
             st.text(case["notes"])
+            if observed := case["snapshot"].get("observed"):
+                st.caption(f"Original result · {HANDOFF_LABELS.get(observed['kind'], 'Triage failed')}"
+                           + (f" · {observed['urgency'].title()}" if observed["urgency"] else ""))
             st.json(case["expected"])
             st.caption(f"Captured {london_time(case['snapshot']['at'])} · {len(case['snapshot']['jobs'])} open jobs")
             choices = {"Use as test case": "holdout", "Use as example": "guidance",
                        "Retire": "retired"} if case["status"] == "draft" else (
                        {"Retire": "retired"} if case["status"] != "retired" else {})
             with st.container(horizontal=True):
+                if (source_id := case["snapshot"].get("report_id")) and case["status"] in {"draft", "holdout"}:
+                    if st.button("Edit label", key=f"eval-edit-{case['id']}"):
+                        st.session_state["open_report"] = source_id
+                        st.session_state["report-dialog"] = ("quality", source_id)
+                        st.rerun()
                 for label, value in choices.items():
                     if st.button(label, key=f"eval-{case['id']}-{value}"):
                         try:
@@ -452,34 +453,72 @@ def close_report_dialog():
     st.session_state.pop("report-dialog", None)
 
 
-@st.dialog("Save as quality check", on_dismiss=close_report_dialog)
+def select_report():
+    selected = st.session_state.get("message-list")
+    if isinstance(selected, int):
+        st.session_state["selected-report-id"] = selected
+
+
+@st.dialog("Give feedback", on_dismiss=close_report_dialog)
 def label_report(report):
-    st.caption("Choose the result you expect. The model’s proposal does not set the label.")
-    kind = st.selectbox("Expected handoff", HANDOFFS, index=None, format_func=HANDOFF_LABELS.get,
+    case = store.feedback_case(report) or {}
+    saved = case.get("expected", {})
+    saved_kind = saved.get("kind")
+    editing = case.get("status") == "holdout"
+    st.caption("Update the expected outcome for this test case." if editing
+               else "Choose what should have happened. This report will become a regression test.")
+    kind = st.selectbox("Expected handoff", HANDOFFS,
+                        index=HANDOFFS.index(saved_kind) if saved_kind in HANDOFFS else None,
+                        format_func=HANDOFF_LABELS.get,
                         key=f"expected-{report['id']}")
-    snapshot = (report["proposal"] or {}).get("context_snapshot")
+    snapshot = case["snapshot"] if editing else (report["proposal"] or {}).get("context_snapshot")
     jobs = {job["id"]: job for job in (snapshot["jobs"] if snapshot else store.jobs(report["location"]))}
-    expected = {"kind": kind}
+    expected = {"kind": kind, "urgency": None}
     if kind in {"escalate", "draft"}:
-        expected["job"] = st.selectbox("Expected job", jobs, index=None,
+        expected["job"] = st.selectbox("Expected job", jobs,
+                                       index=list(jobs).index(saved["job"]) if saved.get("job") in jobs else None,
                                        format_func=lambda job_id: job_line(jobs[job_id]))
     elif kind == "job_question":
         expected["candidates"] = st.multiselect("Expected candidates", jobs,
+                                                default=[job for job in saved.get("candidates", []) if job in jobs],
                                                 format_func=lambda job_id: job_line(jobs[job_id]))
     elif kind == "create":
-        expected["category"] = st.selectbox("Expected category", REPAIR_CATEGORIES)
-        expected["priority"] = st.selectbox("Expected priority", ["P2", "P3"], index=None)
-        expected["days"] = st.number_input("Expected target in days", min_value=1, max_value=90)
-    notes = st.text_area("Reviewer notes", max_chars=1200, key=f"eval-notes-{report['id']}")
-    with st.expander("Corrected interpretation (for guidance examples)"):
-        corrected = st.text_area("Corrected interpretation JSON", key=f"eval-interpretation-{report['id']}",
-                                 help="Enter the evidence, intent and facts that the agent should have extracted.")
-    if st.button("Save draft", disabled=not kind or (kind == "create" and not expected["priority"])):
+        categories = list(REPAIR_CATEGORIES)
+        expected["category"] = st.selectbox("Expected category", categories,
+                                             index=categories.index(saved["category"]) if saved.get("category") in categories else 0)
+        priorities = ["P2", "P3"]
+        expected["priority"] = st.selectbox("Expected priority", priorities,
+                                             index=priorities.index(saved["priority"]) if saved.get("priority") in priorities else None)
+        expected["days"] = st.number_input("Expected target in days", min_value=1, max_value=90,
+                                           value=saved.get("days", 1))
+    elif kind == "manual":
+        urgencies = [None, "urgent", "emergency"]
+        expected["urgency"] = st.selectbox("Expected urgency", urgencies,
+                                           index=urgencies.index(saved.get("urgency")) if saved.get("urgency") in urgencies else 0,
+                                           format_func=lambda value: value.title() if value else "Routine")
+    notes = st.text_area("What should improve? (optional)", value=case.get("notes", ""), max_chars=1200,
+                         key=f"eval-notes-{report['id']}")
+    enable_out_of_scope = kind == "spam" and not store.out_of_scope_enabled() and st.checkbox(
+        "Apply to future triage: propose Spam for clearly unrelated requests",
+        help="This enables a live routing rule for all reports. Safety checks still run first.",
+        key=f"enable-out-of-scope-{report['id']}")
+    guidance = False
+    if not editing:
+        with st.expander("Corrected interpretation (for guidance examples)"):
+            corrected = st.text_area("Corrected interpretation JSON", key=f"eval-interpretation-{report['id']}",
+                                     help="Enter the evidence, intent and facts that the agent should have extracted.")
+            guidance = st.button("Save guidance draft", disabled=not kind or not corrected.strip()
+                                 or (kind == "create" and not expected["priority"]))
+    if st.button("Update test case" if editing else "Save feedback and test case", type="primary",
+                 disabled=not kind or (kind == "create" and not expected["priority"])) or guidance:
         try:
-            interpretation = json.loads(corrected) if corrected.strip() else None
-            store.save_eval_draft(report, expected, notes, interpretation=interpretation)
+            interpretation = json.loads(corrected) if guidance else None
+            store.save_eval_draft(report, expected, notes, interpretation=interpretation, as_test=not guidance,
+                                  enable_out_of_scope=enable_out_of_scope and not guidance)
             close_report_dialog()
-            st.toast("Draft saved. Open Quality checks to choose how to use it.")
+            st.session_state["report-feedback-saved"] = guidance
+            if enable_out_of_scope and not guidance:
+                st.session_state["out-of-scope-enabled"] = True
             st.rerun()
         except (ReviewError, ValueError) as exc:
             st.error(str(exc))
@@ -582,6 +621,9 @@ def show_activity(report, events):
             title = {
                 "received": "Report received", "triage_started": "Agent started reviewing",
                 "triage_failed": "Agent could not complete the review", "requeued": "Returned to the queue",
+                "feedback_saved": "Feedback saved as a test case",
+                "out_of_scope_enabled": "Staff enabled live routing for unrelated requests",
+                "staff_routing_rule": "Staff updated live triage routing",
                 "reply_approved": "Proposed reply approved and posted",
                 "emergency_reply": "Emergency guidance posted automatically",
                 "reply_declined": "Proposed reply declined",
@@ -640,8 +682,11 @@ def confirm_delete(report):
             st.error(str(exc))
 
 
-if st.session_state.pop("return_to_inbox", False):
-    st.session_state.mailboxes = "Inbox"
+if (guidance_saved := st.session_state.pop("report-feedback-saved", None)) is not None:
+    if st.session_state.pop("out-of-scope-enabled", False):
+        st.toast("Feedback saved. Live routing for clearly unrelated requests is enabled.")
+    else:
+        st.toast("Guidance draft saved in Quality checks." if guidance_saved else "Feedback and test case saved.")
 
 if (reset_count := st.session_state.pop("reset-queue-count", None)) is not None:
     st.session_state.workspace = "Reports"
@@ -655,12 +700,10 @@ if opened := st.session_state.pop("open_report", None):
     st.session_state.mailboxes = "Inbox"
     for key in ("report-search", "report-date-from", "report-date-to"):
         st.session_state.pop(key, None)
-    st.session_state["message-list"] = opened
+    st.session_state["selected-report-id"] = opened
 
 all_reports = store.reports()
-workspaces = ["Reports", "Jobs", "Policy"]
-if quality_checks_enabled:
-    workspaces.append("Quality checks")
+workspaces = ["Reports", "Jobs", "Policy", "Quality checks"]
 if st.session_state.get("workspace") not in workspaces:
     st.session_state.workspace = "Reports"
 counts = {
@@ -704,6 +747,8 @@ else:
             query = st.text_input("Search reports", placeholder="Search reports", icon=":material/search:",
                                   label_visibility="collapsed", key="report-search").strip().casefold()
             dates = date_filter("Received dates", "report-date")
+            report_sort = st.selectbox("Sort reports", ["Newest first", "Oldest first", "Urgency first"],
+                                       key="report-sort", label_visibility="collapsed", width=150)
         st.session_state.setdefault("mailboxes", "Inbox")
         folder = st.pills("Report filters", FOLDERS, key="mailboxes", required=True,
                           format_func=lambda name: f"{name} · {counts[name]}",
@@ -743,20 +788,29 @@ else:
             waiting = " · Awaiting review over 15 min" if awaiting_urgent_review(report) else ""
             return f"**{subject}** `#{report_id}`  \n*{preview}*  \n:{color}-badge[{state}]{waiting}"
 
-        rank = {"Emergency": 0, "Urgent": 1}
-        reports = dict(sorted(reports.items(), key=lambda row: (
-            rank.get(status(row[1]), 2),
-            (datetime.fromisoformat(row[1]["received_at"]).timestamp() if row[1]["received_at"] else float("inf"))
-            if folder == "Needs review" or status(row[1]) in rank else 0,
-            row[0],
-        )))
-        if st.session_state.get("message-list") not in reports:
-            st.session_state["message-list"] = next(iter(reports), None)
+        urgency_rank = {"Emergency": 0, "Urgent": 1}
+        direction = 1 if report_sort == "Oldest first" else -1
+
+        def report_order(row):
+            report_id, report = row
+            received = report["received_at"]
+            priority = urgency_rank.get(status(report), 2) if report_sort == "Urgency first" else 0
+            timestamp = datetime.fromisoformat(received).timestamp() if received else 0
+            return priority, received is None, direction * timestamp, direction * report_id
+
+        reports = dict(sorted(reports.items(), key=report_order))
+        selected = st.session_state.get("selected-report-id")
+        if selected not in reports:
+            selected = next(iter(reports), None)
+            st.session_state["selected-report-id"] = selected
+        # Streamlit serializes the radio's formatted label, which changes with
+        # report status. Restore the widget from the stable report ID each run.
+        st.session_state["message-list"] = selected
         with st.container(key="report-rows", height=420, border=False):
-            selected = st.radio("Reports", reports, index=None, key="message-list",
-                                label_visibility="collapsed", width="stretch",
-                                format_func=mail_row) if reports else None
-            if not reports:
+            if reports:
+                st.radio("Reports", reports, index=None, key="message-list", on_change=select_report,
+                         label_visibility="collapsed", width="stretch", format_func=mail_row)
+            else:
                 with st.container(key="report-empty"):
                     st.caption("No matching reports.")
     with detail, st.container(key="reading-pane", border=True, height=560):
@@ -765,24 +819,54 @@ else:
         else:
             report = reports[selected]
             with st.container(horizontal=True, horizontal_alignment="distribute", vertical_alignment="center"):
-                st.badge(status(report), color=BADGE_COLORS.get(status(report), "gray"))
+                if report["proposal"] and not report["result"]:
+                    with st.popover(status(report), icon=":material/edit:", help="Change this report’s label",
+                                    key=f"report-label-{selected}"):
+                        labels = {"routine": "Manual review", "urgent": "Urgent", "emergency": "Emergency",
+                                  "spam": "Spam"}
+                        label = st.selectbox("Report label", labels, index=None, format_func=labels.get,
+                                             key=f"manual-report-label-{selected}-{report['version']}")
+                        reuse = st.checkbox("Apply to matching future reports",
+                                            key=f"reuse-label-{selected}-{report['version']}")
+                        condition = st.text_input(
+                            "When should this label apply?", max_chars=400,
+                            help="Describe the general condition staff want the agent to recognize.",
+                            key=f"label-condition-{selected}-{report['version']}") if reuse else ""
+                        if st.button("Apply label", disabled=label is None or (reuse and not condition.strip())):
+                            try:
+                                store.set_report_label(selected, report["version"], label,
+                                                       routing_condition=condition)
+                                st.rerun()
+                            except ReviewError as exc:
+                                st.error(str(exc))
+                else:
+                    st.badge(status(report), color=BADGE_COLORS.get(status(report), "gray"))
                 with st.popover("Report actions", icon=":material/more_horiz:"):
-                    if quality_checks_enabled and st.button("Save as quality check"):
-                        st.session_state["report-dialog"] = ("quality", selected)
                     if (report["trace_id"] or (report["proposal"] or {}).get("retrieval")) and st.button("Agent diagnostics"):
                         st.session_state["report-dialog"] = ("diagnostics", selected)
                     if st.button("Delete report", icon=":material/delete:"):
                         st.session_state["report-dialog"] = ("delete", selected)
+            with st.container(horizontal=True, gap="small", key=f"report-feedback-actions-{selected}"):
+                retry_disabled = (configuration_issue or ("This report has already been handled." if report["result"]
+                                  else "This report is already in the triage queue." if status(report) in QUEUE_STATUSES
+                                  else None))
+                if st.button("Retry conversation", icon=":material/refresh:", disabled=bool(retry_disabled),
+                             help=retry_disabled or "Rerun triage for this report. Conversation history is kept."):
+                    try:
+                        store.requeue_review(selected, report["version"])
+                        st.session_state["open_report"] = selected
+                        st.rerun()
+                    except ReviewError as exc:
+                        st.error(str(exc))
+                if st.button("Give feedback", icon=":material/feedback:",
+                             disabled=not (report["proposal"] or report["triage_error"])):
+                    st.session_state["report-dialog"] = ("quality", selected)
             if (dialog := st.session_state.get("report-dialog")) and dialog[1] == selected:
                 if not st.session_state.get("composing"):
                     {"quality": label_report, "diagnostics": show_diagnostics, "delete": confirm_delete}[dialog[0]](report)
             st.header(markdown_text(report["subject"] or "Resident report"))
             if report["triage_error"]:
                 st.error(configuration_issue or report["triage_error"])
-                if st.button("Retry triage", icon=":material/refresh:", disabled=bool(configuration_issue)):
-                    store.retry_triage(selected)
-                    st.session_state["return_to_inbox"] = True
-                    st.rerun()
             received = london_time(report["received_at"]) if report["received_at"] else ""
             st.caption(f"#{selected} · {markdown_text(report['location'])}" + (f" · {received}" if received else ""))
             if report["parent_report_id"]:

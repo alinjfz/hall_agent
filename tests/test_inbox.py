@@ -55,7 +55,6 @@ def test_inbox_review_and_job_lifecycle():
 
         with patch.dict("os.environ", {
             "UNIHELP_DB": str(db), "LANGSMITH_TRACING": "false", "UNIHELP_PROVIDER": "openai",
-            "UNIHELP_ENABLE_QUALITY_CHECKS": "true",
         }), \
              patch.object(models, "setup_issue", return_value=None), \
              patch.object(workflow, "triage", side_effect=scripted_triage) as model:
@@ -126,16 +125,30 @@ def test_inbox_review_and_job_lifecycle():
             assert store.report(9)["message"] == "The desk light broke.\n\nPlease check."
             assert ui.radio(key="message-list").value == 9
 
-            click(ui, "Save as quality check")
+            click(ui, "Give feedback")
             ui.selectbox(key="expected-9").set_value("lighting_question").run(timeout=30)
-            click(ui, "Save draft")
+            ui.text_area(key="eval-notes-9").set_value("Ask about another fixed light.").run(timeout=30)
+            click(ui, "Save feedback and test case")
             quality = next(row for row in store.eval_cases() if row["name"] == "Study light")
-            assert quality["status"] == "draft"
+            assert quality["status"] == "holdout"
+            assert quality["notes"] == "Ask about another fixed light."
+            assert quality["snapshot"]["observed"]["kind"] == "lighting_question"
+            assert store.activity(9)[0]["event"] == "feedback_saved"
             ui.button_group(key="workspace").set_value("Quality checks").run(timeout=30)
-            ui.button(key=f"eval-{quality['id']}-holdout").click().run(timeout=30)
             assert store.eval_cases("holdout")[0]["expected"]["kind"] == "lighting_question"
-
-            ui.button_group(key="workspace").set_value("Reports").run(timeout=30)
+            ui.button(key=f"eval-edit-{quality['id']}").click().run(timeout=30)
+            assert ui.selectbox(key="expected-9").value == "lighting_question"
+            ui.selectbox(key="expected-9").set_value("manual").run(timeout=30)
+            click(ui, "Update test case")
+            updated = store.feedback_case(store.report(9))
+            assert updated["expected"]["kind"] == "manual"
+            assert updated["snapshot"] == quality["snapshot"]
+            assert [case["id"] for case in store.eval_cases("holdout")] == [quality["id"]]
+            version = store.report(9)["version"]
+            ui.selectbox(key=f"manual-report-label-9-{version}").set_value("spam").run(timeout=30)
+            click(ui, "Apply label")
+            assert store.report(9)["proposal"]["kind"] == "spam"
+            assert store.feedback_case(store.report(9))["expected"]["kind"] == "manual"
             with patch.dict("os.environ", {"UNIHELP_BACKGROUND_WORKER": "true"}):
                 similar_id = store.add_report("Flat 1", "Another ceiling light", "The ceiling light has stopped working.")
                 original = store.report(2)["proposal"]
@@ -145,15 +158,41 @@ def test_inbox_review_and_job_lifecycle():
                 ui.run(timeout=30)
                 ui.radio(key="message-list").set_value(similar_id).run(timeout=30)
                 assert any(f"Previous review for the same fitting · Job #{job['id']}" in entry.value for entry in ui.caption)
+                assert f"`#{similar_id}`" in ui.radio(key="message-list").options[0]
+                ui.selectbox(key="report-sort").set_value("Oldest first").run(timeout=30)
+                assert f"`#{similar_id}`" in ui.radio(key="message-list").options[-1]
+                assert ui.radio(key="message-list").value == similar_id
+                ui.selectbox(key="report-sort").set_value("Newest first").run(timeout=30)
                 ui.button_group(key="mailboxes").set_value("Failed").run(timeout=30)
+                ui.radio(key="message-list").set_value(1).run(timeout=30)
                 assert ui.radio(key="message-list").value == 1
-                click(ui, "Retry triage")
+                click(ui, "Retry conversation")
                 assert ui.radio(key="message-list").value == 1
                 assert store.report(1)["triage_error"] is None
                 assert store.activity(1)[0]["event"] == "requeued"
                 # Keep the queued test case out of the scripted model's remaining runs.
                 with store.transaction(write=True) as conn:
                     conn.execute("UPDATE reports SET triage_error='Excluded from this smoke test' WHERE id=1")
+                ui.radio(key="message-list").set_value(similar_id).run(timeout=30)
+                store.add_ticket_message(similar_id, "resident", "The fitting is still out.")
+                store.set_report_label(similar_id, store.report(similar_id)["version"], "urgent")
+                ui.selectbox(key="report-sort").set_value("Urgency first").run(timeout=30)
+                assert f"`#{similar_id}`" in ui.radio(key="message-list").options[0]
+                assert ui.radio(key="message-list").value == similar_id
+                click(ui, "Retry conversation")
+                assert ui.radio(key="message-list").value == similar_id
+                assert store.report(similar_id)["proposal"] is None
+                ui.run(timeout=30)
+                assert ui.radio(key="message-list").value == similar_id
+                store.save_proposal(
+                    store.report(similar_id), {"kind": "manual", "reason": "Rechecked.", "urgency": "urgent"}
+                )
+                ui.run(timeout=30)
+                assert ui.radio(key="message-list").value == similar_id
+                assert any(event["details"].get("body") == "The fitting is still out."
+                           for event in store.activity(similar_id))
+                with store.transaction(write=True) as conn:
+                    conn.execute("UPDATE reports SET triage_error='Excluded from this smoke test' WHERE id=?", (similar_id,))
 
             ui.date_input(key="report-date-from").set_value(date.today() + timedelta(days=1)).run(timeout=30)
             assert not ui.radio and not ui.exception

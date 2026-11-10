@@ -11,4 +11,5 @@ secondaryBackgroundColor = "#222222"
 textColor = "#ebedf0"
 
 [server]
-runOnSave = true
+fileWatcherType = "none"
+runOnSave = false

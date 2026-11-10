@@ -44,6 +44,7 @@ def test_chase_review_and_replay(monkeypatch):
              patch.object(workflow, "_review", capture(original_review)):
             ui = AppTest.from_file(str(Path("app.py").resolve())).run(timeout=30)
             wait_for_triage(ui, store, 1)
+            ui.radio(key="message-list").set_value(1).run(timeout=30)
             assert not ui.exception, ui.exception
             assert not ui.error and not ui.exception, (ui.error, ui.exception)
             next(b for b in ui.button if b.label == "Approve escalation").click().run(timeout=30)

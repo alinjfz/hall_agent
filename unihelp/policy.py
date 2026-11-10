@@ -121,13 +121,20 @@ def repair_proposal(report, fitting, other_works, rule, category="lighting", *, 
 
 
 @traceable(name="apply_policy")
-def apply_policy(report, interpretation, jobs, policies, now, job_reports=None, sections=None):
+def apply_policy(report, interpretation, jobs, policies, now, job_reports=None, sections=None,
+                 *, out_of_scope_enabled=False):
     message = report["message"]
     evidence = interpretation.evidence
     if evidence and not quoted_in(evidence, message):
         return manual("The quoted evidence was not found in the report.")
     if evidence.strip() and (interpretation.power_scope == "area" or interpretation.leak_contained is False):
         return urgent_proposal(report, policies, jobs, {"building_hazard"}, evidence=evidence)
+    if interpretation.intent == "out_of_scope":
+        if (out_of_scope_enabled and evidence.strip() and interpretation.category is None
+                and interpretation.fitting is None and interpretation.can_access_now is None
+                and interpretation.power_scope is None and interpretation.leak_contained is None):
+            return {"kind": "spam", "reason": "This request is outside residence support.", "evidence": evidence}
+        return manual("Staff need to verify whether the request is outside residence support.")
     if interpretation.intent == "multiple":
         return handle_multiple(report, interpretation, policies)
     if interpretation.intent == "question":
@@ -308,12 +315,28 @@ def build_proposal(report, context, interpretation, *, signals=(), safety_eviden
         else:
             proposal = apply_policy(report, interpretation, context["jobs"], policies,
                                     datetime.fromisoformat(context["at"]), context.get("job_reports"),
-                                    sections=sections)
+                                    sections=sections, out_of_scope_enabled=context.get("out_of_scope_enabled", False)
+                                    and not signals)
     if proposal["kind"] == "manual" and policies:
         proposal.setdefault("rule", policies["review"])
         proposal.setdefault("destination", proposal["rule"].get("destination", "Residence duty reviewer"))
         if not proposal.get("reply"):
             proposal["reply"] = "Your report needs residence staff review."
+    if (interpretation is not None and interpretation.staff_rule_id is not None and not signals
+            and not spam_evidence and not proposal.get("urgency") and not context_issue(context)):
+        evidence = interpretation.staff_rule_evidence
+        rule = next((rule for rule in context.get("staff_routing_rules", [])
+                     if rule["id"] == interpretation.staff_rule_id), None)
+        if rule and evidence and evidence.strip() and quoted_in(evidence, report["message"]):
+            label = rule["label"]
+            reason = f"Matches staff routing rule #{rule['id']}: {rule['condition']}"
+            if label == "spam":
+                if interpretation.intent in {"manual", "out_of_scope"}:
+                    proposal = {"kind": "spam", "reason": reason, "evidence": evidence}
+            else:
+                proposal = manual(reason) | {"evidence": evidence, "destination": "On-duty residence staff"}
+                if label != "routine":
+                    proposal["urgency"] = label
     if interpretation is not None and interpretation.missing_facts:
         proposal["missing_facts"] = interpretation.missing_facts
     proposal["retrieval"] = {

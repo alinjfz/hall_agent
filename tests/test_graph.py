@@ -1,8 +1,10 @@
 from time import time
 
+import httpx
 import pytest
 from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
+from openai import APIConnectionError
 
 from unihelp import graph
 from unihelp.context import retrieve_policy
@@ -211,13 +213,83 @@ def test_spam_label_cannot_hide_later_hazard_or_post_automatic_reply(tmp_path):
     assert [row["event"] for row in store.activity(report_id)] == ["proposal_ready"]
 
 
+def test_staff_feedback_enables_live_routing_without_guidance(tmp_path, monkeypatch):
+    import json
+
+    from unihelp import workflow
+    from unihelp.interpretation import Interpretation
+
+    class Model:
+        def with_structured_output(self, schema, **kwargs):
+            assert schema is graph.CombinedAssessment
+
+            def answer(messages):
+                payload = json.loads(messages[-1].content)
+                assert "staff_examples" not in payload
+                message = payload["resident_report"]
+                hazard = "I can smell gas." if "gas" in message else None
+                return graph.CombinedAssessment(
+                    safety=SafetyCheck(assessment="current" if hazard else "not_current",
+                                       hazard="gas" if hazard else None, evidence=hazard),
+                    interpretation=None if hazard else Interpretation(
+                        intent="out_of_scope" if payload["out_of_scope_enabled"] else "manual",
+                        evidence=message),
+                )
+
+            return RunnableLambda(answer)
+
+    monkeypatch.setattr(workflow, "triage_model", lambda **_: Model())
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    source = store.add_report("Flat 2", "Kitchen", "Where can I find good food in central London?")
+    assert triage(store, source)["kind"] == "manual"
+    report = store.report(source)
+    store.save_eval_draft(report, {"kind": "spam"}, "Outside residence support.",
+                          as_test=True, enable_out_of_scope=True)
+    assert store.feedback_case(report)["status"] == "holdout"
+    store.requeue_review(source, report["version"])
+    assert triage(store, source)["kind"] == "spam"
+    unseen = store.add_report("Flat 2", "Kitchen", "Can you recommend a sushi restaurant?")
+    assert triage(store, unseen)["kind"] == "spam"
+    mixed = store.add_report("Flat 2", "Kitchen", "Any restaurant tips? I can smell gas.")
+    assert triage(store, mixed)["urgency"] == "emergency"
+
+
+@pytest.mark.parametrize("label", ["routine", "urgent", "emergency", "spam"])
+def test_staff_label_rule_applies_to_new_reports(tmp_path, label):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    source = store.add_report("Flat 2", "Report", "Original report for this condition.")
+    triage(store, source, model=scripted("Flat 2", None, {"intent": "manual"}))
+    store.set_report_label(source, store.report(source)["version"], label,
+                           routing_condition="Resident reports the test condition.")
+    rule, = store.staff_routing_rules()
+    report_id = store.add_report("Flat 3", "Report", "The test condition is happening here too.")
+    facts = {"intent": "manual", "staff_rule_id": rule["id"], "staff_rule_evidence": "The test condition"}
+    proposal = triage(store, report_id, model=scripted("Flat 3", None, facts))
+    assert proposal["kind"] == ("spam" if label == "spam" else "manual")
+    assert proposal.get("urgency") == (label if label in {"urgent", "emergency"} else None)
+    assert "Matches staff routing rule" in proposal["reason"]
+    assert not any(event["event"] == "emergency_reply" for event in store.activity(report_id))
+
+    hazard = store.add_report("Flat 3", "Report", "The test condition. I can smell gas.")
+    model = scripted("Flat 3", None, facts, safety={"assessment": "current", "hazard": "gas",
+                                                    "evidence": "I can smell gas."})
+    proposal = triage(store, hazard, model=model)
+    assert proposal["urgency"] == "emergency"
+    assert proposal["signals"] == ["gas"]
+
+
 @pytest.mark.parametrize("check", [
     None,
+    APIConnectionError(request=httpx.Request("POST", "http://127.0.0.1:1234/v1/chat/completions")),
     SafetyCheck(hazard="fire", evidence="fabricated quote", assessment="current"),
     SafetyCheck(hazard="fire", evidence="my radiator is cold", assessment="current"),
     SafetyCheck(hazard=None, evidence=None, assessment="uncertain"),
     SafetyCheck(hazard="fire", evidence="My radiator is cold.", assessment="not_current"),
-], ids=["timeout", "fabricated", "changed-case", "uncertain", "inconsistent"])
+], ids=["timeout", "connection", "fabricated", "changed-case", "uncertain", "inconsistent"])
 def test_unverified_safety_goes_to_urgent_review(tmp_path, check):
     from unihelp.interpretation import Interpretation
 
@@ -227,6 +299,8 @@ def test_unverified_safety_goes_to_urgent_review(tmp_path, check):
                 if schema is SafetyCheck:
                     if check is None:
                         raise TimeoutError
+                    if isinstance(check, APIConnectionError):
+                        raise check
                     return check
                 return {"parsed": Interpretation(intent="new", category="heating", fitting="radiator",
                                                  evidence="radiator is cold")}
@@ -238,8 +312,22 @@ def test_unverified_safety_goes_to_urgent_review(tmp_path, check):
     proposal = triage(store, report_id, model=Model())
     assert proposal["kind"] == "manual" and proposal["urgency"] == "urgent"
     assert proposal["signals"] == ["unverified_safety"]
+    if isinstance(check, APIConnectionError):
+        assert "retry when the model service is available" in proposal["reason"]
     assert store.report(report_id)["triage_attempts"] == 0
     assert not store.jobs()
+
+
+def test_rejecting_legacy_proposal_creates_unlabelled_quality_draft(tmp_path):
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 1", "Repair", "My radiator is cold.")
+    store.save_proposal(store.report(report_id), {"kind": "manual", "reason": "Unclear."})
+    assert review(store, report_id, store.report(report_id)["version"], "reject")["action"] == "rejected"
+    draft, = store.eval_cases("draft")
+    assert draft["expected"] == {}
+    assert draft["snapshot"]["report_id"] == report_id
+    assert draft["snapshot"]["review_change"]["after"] == "rejected"
 
 
 def test_approved_guidance_retires_after_its_rule_changes(tmp_path):
