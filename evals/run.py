@@ -32,6 +32,9 @@ from unihelp.workflow import triage
 HERE = Path(__file__).resolve().parent
 DATASET_NAMES = {"triage": "unihelp-triage-v3", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
 REPETITIONS = 3
+# scripts/eval-baseline.sh runs this same harness against the pinned original agent,
+# whose triage() took a `passes` argument. That is the only reason these checks exist.
+LEGACY_AGENT = "passes" in inspect.signature(triage).parameters
 
 
 class LocalTraceClient(Client):
@@ -147,7 +150,7 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
         try:
             local = None if hosted else local_trace_client()
             with tracing_context(enabled=True if hosted else "local", client=local), trace("live_triage") as root:
-                options = {"passes": passes} if "passes" in inspect.signature(triage).parameters else {}
+                options = {"passes": passes} if LEGACY_AGENT else {}
                 if deadlines is not None:
                     options["deadlines"] = deadlines
                 proposal = triage(store, report_id, model=model, **options)
@@ -181,7 +184,7 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
             "expected_sections": expected_sections,
             "sections": sections,
             **({"nominated_job_ids": interpret.get("nominated_job_ids")}
-               if "passes" not in inspect.signature(triage).parameters else {}),
+               if not LEGACY_AGENT else {}),
             "reply": proposal.get("reply"), "reply_sources": proposal.get("reply_sources", []),
             "job_record": proposal.get("job"),
             "no_write_before_approval": no_writes, "evidence": evidence, "trajectory": trajectory,
@@ -296,7 +299,7 @@ def main():
     parser.add_argument("--model")
     parser.add_argument("--langsmith", choices=("local", "hosted"), default="local")
     parser.add_argument("--sync-only", action="store_true", help="Sync the full dataset without running the model")
-    legacy = "passes" in inspect.signature(triage).parameters
+    legacy = LEGACY_AGENT
     parser.add_argument("--passes", choices=("single", "specialist", "full"), default="full" if legacy else "single")
     parser.add_argument("--case", action="append", default=[], help="Select case IDs; repeat to select several")
     parser.add_argument("--concurrency", type=int, default=1)
@@ -331,10 +334,9 @@ def main():
         parser.error(issue)
     vertex_metadata = {}
     if vertex_eval:
-        from unihelp.models import vertex_rate_limits, vertex_request_interval
+        from unihelp.models import vertex_request_interval
 
         vertex_metadata["vertex_request_interval_seconds"] = vertex_request_interval()
-        initial_rate_limits = vertex_rate_limits()
     hosted = args.langsmith == "hosted"
     if args.sync_only and (not hosted or args.case):
         parser.error("--sync-only requires --langsmith hosted and the full dataset.")
@@ -505,9 +507,6 @@ def main():
                "retrieval_recall_at_3_by_origin": {origin: {"mean": mean(scores), "trials": len(scores)}
                                                    for origin, scores in sorted(recall_by_origin.items())},
                "results": rows, **vertex_metadata, **judge_metadata}
-    if vertex_eval:
-        summary["vertex_http_429s"] = vertex_rate_limits() - initial_rate_limits
-        print(f"Vertex HTTP 429 responses: {summary['vertex_http_429s']}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")

@@ -96,17 +96,26 @@ def intake_urgency(outputs, reference_outputs):
     return outputs["intake_urgency"] == reference_outputs["urgency"] if "urgency" in reference_outputs else None
 
 
+def retrieval_skipped(outputs):
+    """Urgent and uninterpreted reports go to staff without a handbook search.
+
+    Scoring those trials as zero recall would measure routing, not retrieval.
+    The original agent looked up policy through tools, so its trials stay scored.
+    """
+    trajectory = outputs.get("trajectory", {})
+    return "search_handbook" not in trajectory.get("steps", ["search_handbook"]) and not trajectory.get("tools")
+
 
 def retrieval_recall_at_3(outputs):
     expected = set(outputs.get("expected_sections", []))
-    if expected:
+    if expected and not retrieval_skipped(outputs):
         return len(set(outputs.get("section_ids", [])[:3]) & expected) / len(expected)
     return None
 
 
 def retrieval_hit_at_1(outputs):
     expected = set(outputs.get("expected_sections", []))
-    if expected:
+    if expected and not retrieval_skipped(outputs):
         return bool(set(outputs.get("section_ids", [])[:1]) & expected)
     return None
 

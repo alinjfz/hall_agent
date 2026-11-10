@@ -23,7 +23,7 @@ Append `--case overdue` to run a single case after syncing the full suite. Repea
 
 Vertex uses 60 seconds for interpretation, 45 for safety and 45 for drafting in both the app and eval runner. Override the eval budgets in that order with `--deadlines`, for example `make eval EVAL_ARGS="--agent vertex --case overdue --deadlines 90 60 60"`. Results record the selected budgets.
 
-Vertex evals default to one worker and space request starts at least two seconds apart within the process. Set `UNIHELP_VERTEX_REQUEST_INTERVAL=3` to slow a run further. The app defaults to one second unless that variable is set. A rate limit pauses new Vertex chat requests in the process, and the eval report counts HTTP 429 responses even when a retry succeeds.
+Vertex evals default to one worker and space request starts at least two seconds apart within the process. Set `UNIHELP_VERTEX_REQUEST_INTERVAL=3` to slow a run further. The app defaults to one second unless that variable is set. Pacing uses a LangChain `InMemoryRateLimiter` shared by every Vertex chat model in the process. The Google SDK retries 408, 429 and 5xx responses with exponential backoff, up to three attempts per request.
 
 The output records nomination counts, median latency and total model calls. Nomination is scored before Python verifies the IDs and does not gate route or safety checks.
 

@@ -1,25 +1,19 @@
 import logging
 import os
 from atexit import register
-from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from math import isfinite
-from random import uniform
-from threading import BoundedSemaphore, Lock
-from time import monotonic, sleep, time
 
 import httpx
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_core.runnables import RunnableLambda
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from openai import APIConnectionError
 
 DEFAULTS = {"openai": "gpt-6-luna", "vertex": "gemini-3.1-flash-lite", "lmstudio": "qwen/qwen3.5-9b"}
-VERTEX_REQUEST_SLOTS = BoundedSemaphore(2)
+# Total tries per Vertex request. The Google SDK backs off and retries 408, 429 and 5xx responses.
 VERTEX_MAX_ATTEMPTS = 3
-_vertex_pacing_lock = Lock()
-_vertex_next_request = 0.0
-_vertex_rate_limits = 0
 
 
 class TransientModelError(RuntimeError):
@@ -36,79 +30,14 @@ def vertex_request_interval():
     return interval
 
 
-def vertex_rate_limits():
-    with _vertex_pacing_lock:
-        return _vertex_rate_limits
-
-
-def _wait_for_vertex_slot(deadline, interval):
-    global _vertex_next_request
-    while True:
-        with _vertex_pacing_lock:
-            now = monotonic()
-            if max(now, _vertex_next_request) >= deadline:
-                raise TimeoutError("Vertex request budget exhausted while pacing")
-            delay = _vertex_next_request - now
-            if delay <= 0:
-                _vertex_next_request = now + interval
-                return
-        sleep(delay)
-
-
-def _vertex_cooldown(exc, delay):
-    global _vertex_next_request, _vertex_rate_limits
-    response = getattr(exc, "response", None)
-    if response is None:
-        response = getattr(exc.__cause__, "response", None)
-    retry_after = getattr(response, "headers", {}).get("retry-after")
-    if retry_after:
-        try:
-            seconds = float(retry_after)
-        except ValueError:
-            try:
-                seconds = parsedate_to_datetime(retry_after).timestamp() - time()
-            except (ValueError, OverflowError):
-                seconds = 0
-        if isfinite(seconds):
-            delay = max(delay, seconds)
-    with _vertex_pacing_lock:
-        _vertex_rate_limits += 1
-        until = monotonic() + delay
-        _vertex_next_request = max(_vertex_next_request, until)
-        return _vertex_next_request
+@lru_cache(maxsize=4)
+def vertex_rate_limiter(interval):
+    """One limiter per process, so every Vertex chat model shares the same request pacing."""
+    return InMemoryRateLimiter(requests_per_second=1 / interval, check_every_n_seconds=0.1, max_bucket_size=1)
 
 
 class VertexChatModel(ChatGoogleGenerativeAI):
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        budget = kwargs.pop("timeout", None) or self.timeout or 20
-        kwargs["max_retries"] = 1
-        deadline = monotonic() + budget
-        interval = vertex_request_interval()
-        for attempt in range(VERTEX_MAX_ATTEMPTS):
-            if not VERTEX_REQUEST_SLOTS.acquire(timeout=max(0, deadline - monotonic())):
-                raise TimeoutError("Timed out waiting for a Vertex request slot")
-            try:
-                _wait_for_vertex_slot(deadline, interval)
-                remaining = deadline - monotonic()
-                if remaining <= 0:
-                    raise TimeoutError("Vertex request budget exhausted")
-                return super()._generate(messages, stop=stop, run_manager=run_manager, timeout=remaining, **kwargs)
-            except Exception as exc:
-                status = getattr(exc, "code", None) or getattr(exc.__cause__, "code", None)
-                if status == 429:
-                    retry_at = _vertex_cooldown(exc, 2 ** (attempt + 1) + uniform(0, 0.5))
-                    if attempt + 1 == VERTEX_MAX_ATTEMPTS or retry_at >= deadline:
-                        raise
-                    continue
-                retryable = status in {408, 500, 502, 503, 504} or isinstance(exc, httpx.TransportError)
-                if not retryable or attempt + 1 == VERTEX_MAX_ATTEMPTS:
-                    raise
-                delay = 0.5 * 2**attempt + uniform(0, 0.5)
-                if monotonic() + delay >= deadline:
-                    raise
-            finally:
-                VERTEX_REQUEST_SLOTS.release()
-            sleep(delay)
+    """Marks Gemini on Vertex, whose JSON schema output cannot be combined with extra tools."""
 
 
 def model_timeout(exc):
@@ -270,7 +199,8 @@ def triage_model(*, timeout=20):
         model=name, vertexai=True, credentials=credentials,
         project=os.environ["GOOGLE_CLOUD_PROJECT"],
         location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),
-        timeout=timeout, max_retries=1,
+        timeout=timeout, max_retries=VERTEX_MAX_ATTEMPTS,
+        rate_limiter=vertex_rate_limiter(vertex_request_interval()),
     )
     if api_key:
         model.client = vertex_api_key_client(api_key)

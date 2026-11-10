@@ -108,7 +108,6 @@ class State(TypedDict, total=False):
     error: str
     model_error: str
     version: int
-    expires: float
     sections: list[dict]
 
 
@@ -251,258 +250,267 @@ def model_for_run(runtime):
     return (runtime.context or Context()).model_factory or triage_model
 
 
-def build_graph():
-    def load_report_and_context(state: State, config: RunnableConfig, runtime: Runtime[Context]):
-        store = store_for_run(config, runtime)
-        report_id = state.get("report_id", 1)
-        if "message" in state:
-            report_id = store.add_report(state["location"], state.get("subject", "Studio report"), state["message"])
-        report = store.report(report_id)
-        if "expected_version" in state and (report["version"] != state["expected_version"]
-                                             or report["triage_claim"] != state.get("expected_claim")):
-            raise ReviewError("Triage claim changed. Reload the report.")
-        if report["result"] and not state.get("existing"):
-            raise ReviewError("This report is already handled.")
-        if state.get("existing") or ("message" in state and report["proposal"]):
-            if not report["proposal"]:
-                raise ReviewError("This report has no current proposal.")
-            return {"report_id": report_id, "report": report, "proposal": report["proposal"],
-                    "version": report["version"], "existing": True}
-        context = retrieve_context(store, report)
-        run = get_current_run_tree()
-        if run:
-            run.add_metadata({"graph_version": GRAPH_VERSION, "prompt_sha256": PROMPT_HASH,
-                              "out_of_scope_enabled": context["out_of_scope_enabled"],
-                              "policy_revisions": {rule["id"]: rule["revision"] for rule in context["policies"].values()}})
-        return {"report_id": report_id, "report": report, "context": context}
+# Nodes. Each takes the state and returns an update; none writes a job before staff approval.
 
-    def check_safety(state: State, runtime: Runtime[Context]):
-        report = state["report"]
-        message = report["message"]
-        if isolated_alarm_chirp(message):
-            return {"safety_review": ["fire_equipment"], "safety_evidence": message}
-        unavailable = False
+def load_report_and_context(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+    store = store_for_run(config, runtime)
+    report_id = state.get("report_id", 1)
+    if "message" in state:
+        report_id = store.add_report(state["location"], state.get("subject", "Studio report"), state["message"])
+    report = store.report(report_id)
+    if "expected_version" in state and (report["version"] != state["expected_version"]
+                                         or report["triage_claim"] != state.get("expected_claim")):
+        raise ReviewError("Triage claim changed. Reload the report.")
+    if report["result"] and not state.get("existing"):
+        raise ReviewError("This report is already handled.")
+    if state.get("existing") or ("message" in state and report["proposal"]):
+        if not report["proposal"]:
+            raise ReviewError("This report has no current proposal.")
+        return {"report_id": report_id, "report": report, "proposal": report["proposal"],
+                "version": report["version"], "existing": True}
+    context = retrieve_context(store, report)
+    run = get_current_run_tree()
+    if run:
+        run.add_metadata({"graph_version": GRAPH_VERSION, "prompt_sha256": PROMPT_HASH,
+                          "out_of_scope_enabled": context["out_of_scope_enabled"],
+                          "policy_revisions": {rule["id"]: rule["revision"] for rule in context["policies"].values()}})
+    return {"report_id": report_id, "report": report, "context": context}
+
+
+def check_safety(state: State, runtime: Runtime[Context]):
+    report = state["report"]
+    message = report["message"]
+    if isolated_alarm_chirp(message):
+        return {"safety_review": ["fire_equipment"], "safety_evidence": message}
+    unavailable = False
+    try:
+        deadline = time() + (runtime.context or Context()).deadlines.safety
+        result = invoke_structured(model_for_run(runtime), deadline, SafetyCheck, [
+            SystemMessage(SAFETY_PROMPT),
+            HumanMessage(json.dumps({"location": report["location"], "resident_report": message}, ensure_ascii=False)),
+        ])
+        check = SafetyCheck.model_validate(result)
+    except Exception as exc:
+        unavailable = transient_error(exc)
+        logging.warning("Safety screening unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
+    else:
+        if verified := verified_safety(check, report):
+            return verified
+    return {"safety_review": sorted(safety_signals(message) | {"unverified_safety"}),
+            "safety_evidence": None, "safety_model_unavailable": unavailable}
+
+
+def assess_report(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+    report = state["report"]
+    deadlines = (runtime.context or Context()).deadlines
+    try:
+        result = invoke_structured(
+            model_for_run(runtime), time() + min(deadlines.safety, deadlines.interpretation),
+            CombinedAssessment, [SystemMessage(ASSESS_PROMPT), interpretation_payload(report, state["context"])],
+        )
+        assessment = CombinedAssessment.model_validate(result)
+    except Exception as exc:
+        logging.info("Combined assessment unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
+        return {}
+    safety = verified_safety(assessment.safety, report)
+    if assessment.safety.assessment is None or safety is None:
+        return {}
+    signals = safety_signals(report["message"])
+    if signals - set(safety["safety_review"]):
+        return {}  # Recheck any hazard or retraction that conflicts with intake.
+    if safety["safety_review"] or safety.get("spam_evidence"):
+        return safety
+    facts = assessment.interpretation
+    if facts and (facts.power_scope == "area" or facts.leak_contained is False or facts.can_access_now is False):
+        return {}  # Safety and interpretation disagree.
+    if facts is None or (facts.intent != "manual" and not quoted_in(facts.evidence, report["message"])):
+        return safety
+    nominated = list(facts.candidate_ids) if facts.intent == "chase" else None
+    facts = verified_candidates(facts, state["context"]["jobs"])
+    store_for_run(config, runtime).record_triage_attempt(report["id"], report["version"])
+    return safety | {"interpretation": facts.model_dump(), "nominated_job_ids": nominated, "model_error": ""}
+
+
+def interpret(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+    if context_issue(state["context"]):
+        return {"interpretation": None, "nominated_job_ids": None, "model_error": ""}
+    report = state["report"]
+    store = store_for_run(config, runtime)
+    factory = model_for_run(runtime)
+    expires = time() + (runtime.context or Context()).deadlines.interpretation
+    for attempt in range(MAX_ATTEMPTS):
+        if expires <= time():
+            return {"interpretation": None, "nominated_job_ids": None, "model_error": "timed out"}
+        store.record_triage_attempt(report["id"], report["version"])
         try:
-            deadline = time() + (runtime.context or Context()).deadlines.safety
-            result = invoke_structured(model_for_run(runtime), deadline, SafetyCheck, [
-                SystemMessage(SAFETY_PROMPT),
-                HumanMessage(json.dumps({"location": report["location"], "resident_report": message}, ensure_ascii=False)),
-            ])
-            check = SafetyCheck.model_validate(result)
+            result, nominated = interpret_report(factory, report, state["context"], expires)
         except Exception as exc:
-            unavailable = transient_error(exc)
-            logging.warning("Safety screening unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
-        else:
-            if verified := verified_safety(check, report):
-                return verified
-        return {"safety_review": sorted(safety_signals(message) | {"unverified_safety"}),
-                "safety_evidence": None, "safety_model_unavailable": unavailable}
+            retryable = transient_error(exc)
+            delay = 0.3 * 2**attempt
+            if retryable and attempt + 1 < MAX_ATTEMPTS and time() + delay < expires:
+                sleep(delay)
+                continue
+            logging.warning("Triage model failed for report %s (%s)", report["id"], type(exc).__name__)
+            error = ("timed out" if expires <= time() or model_timeout(exc) else
+                     "model unavailable" if retryable else "unparseable model output")
+            return {"interpretation": None, "nominated_job_ids": None, "model_error": error}
+        return {"interpretation": result.model_dump() if result else None, "nominated_job_ids": nominated,
+                "model_error": "" if result else "unparseable model output"}
 
-    def assess_report(state: State, config: RunnableConfig, runtime: Runtime[Context]):
-        report = state["report"]
-        deadlines = (runtime.context or Context()).deadlines
-        try:
-            result = invoke_structured(
-                model_for_run(runtime), time() + min(deadlines.safety, deadlines.interpretation),
-                CombinedAssessment, [SystemMessage(ASSESS_PROMPT), interpretation_payload(report, state["context"])],
-            )
-            assessment = CombinedAssessment.model_validate(result)
-        except Exception as exc:
-            logging.info("Combined assessment unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
-            return {}
-        safety = verified_safety(assessment.safety, report)
-        if assessment.safety.assessment is None or safety is None:
-            return {}
-        signals = safety_signals(report["message"])
-        if signals - set(safety["safety_review"]):
-            return {}  # Recheck any hazard or retraction that conflicts with intake.
-        if safety["safety_review"] or safety.get("spam_evidence"):
-            return safety
-        facts = assessment.interpretation
-        if facts and (facts.power_scope == "area" or facts.leak_contained is False or facts.can_access_now is False):
-            return {}  # Safety and interpretation disagree.
-        if facts is None or (facts.intent != "manual" and not quoted_in(facts.evidence, report["message"])):
-            return safety
-        nominated = list(facts.candidate_ids) if facts.intent == "chase" else None
-        facts = verified_candidates(facts, state["context"]["jobs"])
-        store_for_run(config, runtime).record_triage_attempt(report["id"], report["version"])
-        return safety | {"interpretation": facts.model_dump(), "nominated_job_ids": nominated, "model_error": ""}
 
-    def interpret(state: State, config: RunnableConfig, runtime: Runtime[Context]):
-        if context_issue(state["context"]):
-            return {"interpretation": None, "nominated_job_ids": None, "model_error": ""}
-        report = state["report"]
-        store = store_for_run(config, runtime)
-        factory = model_for_run(runtime)
-        # Reuse an existing deadline when resuming a checkpoint from the older graph.
-        expires = state.get("expires")
-        if expires is None:
-            expires = time() + (runtime.context or Context()).deadlines.interpretation
-        for attempt in range(MAX_ATTEMPTS):
-            if expires <= time():
-                return {"interpretation": None, "nominated_job_ids": None, "model_error": "timed out"}
-            store.record_triage_attempt(report["id"], report["version"])
-            try:
-                result, nominated = interpret_report(factory, report, state["context"], expires)
-            except Exception as exc:
-                retryable = transient_error(exc)
-                delay = 0.3 * 2**attempt
-                if retryable and attempt + 1 < MAX_ATTEMPTS and time() + delay < expires:
-                    sleep(delay)
-                    continue
-                logging.warning("Triage model failed for report %s (%s)", report["id"], type(exc).__name__)
-                error = ("timed out" if expires <= time() or model_timeout(exc) else
-                         "model unavailable" if retryable else "unparseable model output")
-                return {"interpretation": None, "nominated_job_ids": None, "model_error": error}
-            return {"interpretation": result.model_dump() if result else None, "nominated_job_ids": nominated,
-                    "model_error": "" if result else "unparseable model output"}
+def retrieve_handbook(state: State):
+    """The retrieval step: search the handbook with the resident's words and the interpreted facts."""
+    facts = state.get("interpretation")
+    if not facts or state["safety_review"]:
+        return {"sections": []}  # Manual and urgent handoffs carry no drafted reply.
+    query = handbook_query(state["report"]["message"], intent=facts["intent"],
+                           category=facts.get("category"), fitting=facts.get("fitting"))
+    sections = section_payload(search_handbook(query))
+    if not sections and (run := get_current_run_tree()):
+        run.add_metadata({"retrieval_empty": True})
+    return {"sections": sections}
 
-    def retrieve_handbook(state: State):
-        """The retrieval step: search the handbook with the resident's words and the interpreted facts."""
-        facts = state.get("interpretation")
-        if not facts or state["safety_review"]:
-            return {"sections": []}  # Manual and urgent handoffs carry no drafted reply.
-        query = handbook_query(state["report"]["message"], intent=facts["intent"],
-                               category=facts.get("category"), fitting=facts.get("fitting"))
-        sections = section_payload(search_handbook(query))
-        if not sections and (run := get_current_run_tree()):
-            run.add_metadata({"retrieval_empty": True})
-        return {"sections": sections}
 
-    def policy(state: State):
-        result = Interpretation.model_validate(state["interpretation"]) if state.get("interpretation") else None
-        sections = state.get("sections", [])
-        proposal = build_proposal(state["report"], state["context"], result,
-                                  signals=state["safety_review"], safety_evidence=state.get("safety_evidence"),
-                                  model_error=state.get("model_error", ""), sections=sections,
-                                  spam_evidence=state.get("spam_evidence"))
-        if state.get("safety_model_unavailable"):
-            proposal["reason"] = ("The model service could not complete the safety check. "
-                                  "Review this report first, then retry when the model service is available.")
-        proposal["retrieval"]["section_ids"] = [section["id"] for section in sections]
-        return {"proposal": dump_proposal(proposal)}
+def decide_policy(state: State):
+    result = Interpretation.model_validate(state["interpretation"]) if state.get("interpretation") else None
+    sections = state.get("sections", [])
+    proposal = build_proposal(state["report"], state["context"], result,
+                              signals=state["safety_review"], safety_evidence=state.get("safety_evidence"),
+                              model_error=state.get("model_error", ""), sections=sections,
+                              spam_evidence=state.get("spam_evidence"))
+    if state.get("safety_model_unavailable"):
+        proposal["reason"] = ("The model service could not complete the safety check. "
+                              "Review this report first, then retry when the model service is available.")
+    proposal["retrieval"]["section_ids"] = [section["id"] for section in sections]
+    return {"proposal": dump_proposal(proposal)}
 
-    def draft_reply(state: State, runtime: Runtime[Context]):
-        proposal = parse_proposal(state["proposal"])
-        if proposal.kind != "answer":
-            return {}
 
-        def unanswered():
-            # A handbook answer with no grounded draft is not an answer. Hand it to staff.
-            fallback = build_proposal(state["report"], state["context"], None, signals=[], model_error=UNANSWERED)
-            fallback["retrieval"]["section_ids"] = proposal.retrieval.section_ids
-            return {"proposal": dump_proposal(fallback)}
+def draft_reply(state: State, runtime: Runtime[Context]):
+    proposal = parse_proposal(state["proposal"])
+    if proposal.kind != "answer":
+        return {}
 
-        context = runtime.context or Context()
-        if not context.draft_replies or not state["sections"]:
-            return unanswered()
-        try:
-            draft, shown = draft_with_search(
-                model_for_run(runtime), time() + context.deadlines.drafting,
-                {"report": state["report"]["message"], "job": state["proposal"].get("job")}, state["sections"])
-        except Exception as exc:
-            logging.warning("Reply draft failed for report %s (%s)", state["report_id"], type(exc).__name__)
-            return unanswered()
-        shown_ids = [section["id"] for section in shown]
-        if (draft and draft.covered
-                and grounded_reply(draft.body, draft.section_ids, shown_ids, state["proposal"].get("job"))):
-            retrieval = state["proposal"]["retrieval"] | {"section_ids": shown_ids}
-            return {"sections": shown, "proposal": state["proposal"] | {
-                "reply": draft.body, "reply_sources": draft.section_ids, "retrieval": retrieval}}
-        if run := get_current_run_tree():
-            run.add_metadata({"draft_not_covered": True} if draft and not draft.covered
-                             else {"draft_rejected_by_grounding": True})
+    def unanswered():
+        # A handbook answer with no grounded draft is not an answer. Hand it to staff.
+        fallback = build_proposal(state["report"], state["context"], None, signals=[], model_error=UNANSWERED)
+        fallback["retrieval"]["section_ids"] = proposal.retrieval.section_ids
+        return {"proposal": dump_proposal(fallback)}
+
+    context = runtime.context or Context()
+    if not context.draft_replies or not state["sections"]:
         return unanswered()
+    try:
+        draft, shown = draft_with_search(
+            model_for_run(runtime), time() + context.deadlines.drafting,
+            {"report": state["report"]["message"], "job": state["proposal"].get("job")}, state["sections"])
+    except Exception as exc:
+        logging.warning("Reply draft failed for report %s (%s)", state["report_id"], type(exc).__name__)
+        return unanswered()
+    shown_ids = [section["id"] for section in shown]
+    if (draft and draft.covered
+            and grounded_reply(draft.body, draft.section_ids, shown_ids, state["proposal"].get("job"))):
+        retrieval = state["proposal"]["retrieval"] | {"section_ids": shown_ids}
+        return {"sections": shown, "proposal": state["proposal"] | {
+            "reply": draft.body, "reply_sources": draft.section_ids, "retrieval": retrieval}}
+    if run := get_current_run_tree():
+        run.add_metadata({"draft_not_covered": True} if draft and not draft.covered
+                         else {"draft_rejected_by_grounding": True})
+    return unanswered()
 
-    def prepare_proposal_for_review(state: State, config: RunnableConfig, runtime: Runtime[Context]):
-        store = store_for_run(config, runtime)
-        report = state["report"]
-        thread_id = config["configurable"]["thread_id"]
-        current = store.report(report["id"])
-        # A checkpoint can be replayed after the database commit. Reuse the saved
-        # proposal before making another drafting call or writing another event.
-        if (current["version"] == report["version"] + 1 and current["proposal"]
-                and current["proposal"].get("review_thread_id") == thread_id):
-            return {"proposal": current["proposal"], "version": current["version"]}
-        prepared = draft_reply(state, runtime)
-        proposal = prepared.get("proposal", state["proposal"]) | {"review_thread_id": thread_id}
-        run = get_current_run_tree()
-        store.save_proposal(report, proposal, str(run.trace_id) if run else None,
-                            interpretation=state.get("interpretation"))
-        return prepared | {"proposal": proposal, "version": report["version"] + 1}
 
-    @traceable(name="await_review")
-    def await_review(state: State):
-        decision = interrupt({"report_id": state["report_id"], "version": state["version"],
-                              "proposal": state["proposal"], "error": state.get("error") or None})
-        if isinstance(decision, str):
-            decision = {"action": "finish", "decision": decision, "version": state["version"]}
-        return {"decision": decision, "error": ""}
+def prepare_proposal_for_review(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+    store = store_for_run(config, runtime)
+    report = state["report"]
+    thread_id = config["configurable"]["thread_id"]
+    current = store.report(report["id"])
+    # A checkpoint can be replayed after the database commit. Reuse the saved
+    # proposal before making another drafting call or writing another event.
+    if (current["version"] == report["version"] + 1 and current["proposal"]
+            and current["proposal"].get("review_thread_id") == thread_id):
+        return {"proposal": current["proposal"], "version": current["version"]}
+    prepared = draft_reply(state, runtime)
+    proposal = prepared.get("proposal", state["proposal"]) | {"review_thread_id": thread_id}
+    run = get_current_run_tree()
+    store.save_proposal(report, proposal, str(run.trace_id) if run else None,
+                        interpretation=state.get("interpretation"))
+    return prepared | {"proposal": proposal, "version": report["version"] + 1}
 
-    @traceable(name="apply_decision")
-    def apply_decision(state: State, config: RunnableConfig, runtime: Runtime[Context]):
-        store = store_for_run(config, runtime)
-        decision = state["decision"]
-        report_id = state["report_id"]
-        try:
-            if not isinstance(decision, dict) or decision.get("version") != state["version"]:
+
+def await_review(state: State):
+    decision = interrupt({"report_id": state["report_id"], "version": state["version"],
+                          "proposal": state["proposal"], "error": state.get("error") or None})
+    if isinstance(decision, str):
+        decision = {"action": "finish", "decision": decision, "version": state["version"]}
+    return {"decision": decision, "error": ""}
+
+
+def apply_decision(state: State, config: RunnableConfig, runtime: Runtime[Context]):
+    store = store_for_run(config, runtime)
+    decision = state["decision"]
+    report_id = state["report_id"]
+    try:
+        if not isinstance(decision, dict) or decision.get("version") != state["version"]:
+            raise ReviewError("Review changed. Reload the report.")
+        version = state["version"]
+        if decision["action"] != "reply" and state["report"]["result"]:
+            raise ReviewError("This report is already handled.")
+        if decision["action"] == "finish":
+            receipt = store.finish(report_id, version, decision["decision"], search_rules,
+                                   followup=decision.get("followup", ""), reviewer_id=decision.get("reviewer_id"))
+            return Command(update={"receipt": receipt}, goto=END)
+        if decision["action"] == "reply":
+            store.add_ticket_message(report_id, "staff", decision["body"], draft_version=version,
+                                     decline=decision.get("decline", False), reviewer_id=decision.get("reviewer_id"))
+            return Command(goto="await_review")
+        if decision["action"] == "revise":
+            report = store.report(report_id)
+            if (report["version"] == version + 1 and report["proposal"] and not report["result"]
+                    and report["proposal"].get("review_thread_id") == config["configurable"]["thread_id"]):
+                return Command(update={"proposal": report["proposal"], "version": version + 1}, goto="await_review")
+            if report["version"] != version or report["result"]:
                 raise ReviewError("Review changed. Reload the report.")
-            version = state["version"]
-            if decision["action"] != "reply" and state["report"]["result"]:
-                raise ReviewError("This report is already handled.")
-            if decision["action"] == "finish":
-                receipt = store.finish(report_id, version, decision["decision"], search_rules,
-                                       followup=decision.get("followup", ""), reviewer_id=decision.get("reviewer_id"))
-                return Command(update={"receipt": receipt}, goto=END)
-            if decision["action"] == "reply":
-                store.add_ticket_message(report_id, "staff", decision["body"], draft_version=version,
-                                         decline=decision.get("decline", False), reviewer_id=decision.get("reviewer_id"))
-                return Command(goto="await_review")
-            if decision["action"] == "revise":
-                report = store.report(report_id)
-                if (report["version"] == version + 1 and report["proposal"] and not report["result"]
-                        and report["proposal"].get("review_thread_id") == config["configurable"]["thread_id"]):
-                    return Command(update={"proposal": report["proposal"], "version": version + 1}, goto="await_review")
-                if report["version"] != version or report["result"]:
-                    raise ReviewError("Review changed. Reload the report.")
-                value = decision.get("value")
-                if isinstance(value, dict) and isinstance(value.get("due_date"), str):
-                    value = value | {"due_date": date.fromisoformat(value["due_date"])}
-                proposal = parse_proposal(report["proposal"])
-                updated = dump_proposal(revise_proposal(store, report, proposal, value))
-                store.save_proposal(report, updated, reviewer_id=decision.get("reviewer_id"))
-                return Command(update={"proposal": updated, "version": version + 1}, goto="await_review")
-            raise ReviewError("Invalid review decision.")
-        except (ReviewError, ValueError, KeyError) as exc:
-            return Command(update={"error": str(exc)}, goto="await_review")
+            value = decision.get("value")
+            if isinstance(value, dict) and isinstance(value.get("due_date"), str):
+                value = value | {"due_date": date.fromisoformat(value["due_date"])}
+            proposal = parse_proposal(report["proposal"])
+            updated = dump_proposal(revise_proposal(store, report, proposal, value))
+            store.save_proposal(report, updated, reviewer_id=decision.get("reviewer_id"))
+            return Command(update={"proposal": updated, "version": version + 1}, goto="await_review")
+        raise ReviewError("Invalid review decision.")
+    except (ReviewError, ValueError, KeyError) as exc:
+        return Command(update={"error": str(exc)}, goto="await_review")
 
+
+def assessment_entry(state: State, runtime: Runtime[Context]):
+    if state.get("existing"):
+        return "await_review"
+    context = runtime.context or Context()
+    if (not context.combined_assessment or context_issue(state["context"])
+            or isolated_alarm_chirp(state["report"]["message"])):
+        return "check_safety"
+    return "assess_report"
+
+
+def after_safety(state: State):
+    if "safety_review" not in state:
+        return "check_safety"
+    if state["safety_review"] or state.get("spam_evidence"):
+        return "apply_policy"
+    return "retrieve_handbook" if state.get("interpretation") else "interpret"
+
+
+def build_graph():
     flow = StateGraph(State, context_schema=Context)
     flow.add_node("load_report_and_context", load_report_and_context)
     flow.add_node("assess_report", assess_report)
     flow.add_node("check_safety", check_safety)
     flow.add_node("interpret", interpret)
     flow.add_node("retrieve_handbook", retrieve_handbook)
-    flow.add_node("apply_policy", policy)
+    flow.add_node("apply_policy", decide_policy)
     flow.add_node("prepare_proposal_for_review", prepare_proposal_for_review)
     flow.add_node("await_review", await_review)
     flow.add_node("apply_decision", apply_decision, destinations=("await_review", END))
     flow.add_edge(START, "load_report_and_context")
-
-    def assessment_entry(state: State, runtime: Runtime[Context]):
-        if state.get("existing"):
-            return "await_review"
-        context = runtime.context or Context()
-        if (not context.combined_assessment or context_issue(state["context"])
-                or isolated_alarm_chirp(state["report"]["message"])):
-            return "check_safety"
-        return "assess_report"
-
-    def after_safety(state: State):
-        if "safety_review" not in state:
-            return "check_safety"
-        if state["safety_review"] or state.get("spam_evidence"):
-            return "apply_policy"
-        return "retrieve_handbook" if state.get("interpretation") else "interpret"
 
     flow.add_conditional_edges("load_report_and_context", assessment_entry,
                                ["await_review", "check_safety", "assess_report"])

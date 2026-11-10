@@ -86,42 +86,21 @@ def test_laundry_hours_requires_relevant_handbook_coverage(tmp_path, monkeypatch
     assert proposal["reason"] == "The handbook does not list the requested laundry hours."
 
 
-def test_vertex_rate_limit_cooldown_applies_to_other_requests(monkeypatch):
-    from types import SimpleNamespace
-
+def test_vertex_models_share_one_rate_limiter_and_retry_in_the_sdk(monkeypatch):
     from unihelp import models
 
-    now = 0.0
-    attempts = []
-
-    def sleep(seconds):
-        nonlocal now
-        now += seconds
-
-    class RateLimit(Exception):
-        code = 429
-        response = SimpleNamespace(headers={"retry-after": "5"})
-
-    def generate(*args, **kwargs):
-        attempts.append(now)
-        if len(attempts) == 1:
-            raise RateLimit
-        return "ok"
-
+    monkeypatch.setenv("UNIHELP_PROVIDER", "vertex")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "demo")
+    monkeypatch.setenv("GOOGLE_API_KEY", "test")
     monkeypatch.setenv("UNIHELP_VERTEX_REQUEST_INTERVAL", "2")
-    monkeypatch.setattr(models, "_vertex_next_request", 0.0)
-    monkeypatch.setattr(models, "_vertex_rate_limits", 0)
-    monkeypatch.setattr(models, "monotonic", lambda: now)
-    monkeypatch.setattr(models, "sleep", sleep)
-    monkeypatch.setattr(models.ChatGoogleGenerativeAI, "_generate", generate)
-
-    with pytest.raises(RateLimit):
-        models.VertexChatModel.model_construct(timeout=4)._generate([])
-    assert models.vertex_rate_limits() == 1
-    peer = models.VertexChatModel.model_construct(timeout=10)
-    assert peer._generate([]) == "ok"
-    assert peer._generate([]) == "ok"
-    assert attempts == [0.0, 5.0, 7.0]
+    monkeypatch.delenv("UNIHELP_MODEL", raising=False)
+    first, second = models.triage_model(timeout=5), models.triage_model(timeout=9)
+    assert isinstance(first, models.VertexChatModel)
+    assert first.rate_limiter is second.rate_limiter
+    assert first.rate_limiter.requests_per_second == 0.5
+    assert first.max_retries == models.VERTEX_MAX_ATTEMPTS
+    monkeypatch.setenv("UNIHELP_VERTEX_REQUEST_INTERVAL", "0")
+    assert "positive" in models.setup_issue("vertex")
 
 
 def test_private_lighting_fault_is_not_a_dark_shared_route(tmp_path):

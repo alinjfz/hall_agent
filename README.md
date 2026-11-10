@@ -1,19 +1,19 @@
 # UniHelp
 
-UniHelp triages maintenance reports for Juniper Court, a fictional university residence. Residents need a grounded answer or the right next step. Residence staff need enough evidence to act without opening duplicate jobs or missing urgent reports. UniHelp proposes repairs, checks existing jobs, answers handbook questions and drafts replies in a Streamlit inbox. Intake rules can post preset fire and gas guidance immediately. Staff review proposed job actions and routine replies before they take effect.
+UniHelp triages maintenance reports for Juniper Court, a fictional university residence. Residents need a grounded answer or the right next step. Residence staff need enough evidence to act without opening duplicate jobs or missing urgent reports. UniHelp proposes repairs, checks existing jobs, answers handbook questions and drafts replies in a Streamlit inbox. When the model confirms a fire or gas emergency with a quote found in the report, preset guidance is posted in the inbox straight away. Staff review proposed job actions and routine replies before they take effect.
 
 ```mermaid
 flowchart LR
-    I[Resident report] --> S[Intake rules and trusted context]
-    S -->|Recognized fire or gas emergency| E[Post preset guidance in the inbox]
+    I[Resident report] --> S[Load report and trusted context]
     S --> M[Assess safety and interpret with open jobs]
-    M -->|Uncertain or conflicting| V[Run separate safety check]
+    M -->|Uncertain or conflicts with intake rules| V[Run separate safety check]
     M -->|Routine| R[Retrieve handbook passages]
     V -->|Routine| R
     M -->|Safety or spam review| P[Apply Python policy]
     V -->|Safety or spam review| P
     R --> P
     P --> D[Prepare proposal and reply]
+    D -->|Verified fire or gas emergency| E[Post preset guidance in the inbox]
     D --> H[Pause for staff review]
     H --> A[Validate and apply staff decision]
     A -->|Edit or clarification| H
@@ -44,10 +44,11 @@ A good run assigns the right route and urgency, uses a verified job when followi
 | --- | ---: | --- |
 | [Full v3 run before routing fixes](evals/results/vertex-gpt-triage-v2.json) | 190/195 | 65 cases × 3 trials. Portable lighting failed all three trials. Two other cases missed the expected route once each. |
 | [Targeted rerun after routing fixes](evals/results/vertex-routing-fixes.json) | 24/24 | The three failed cases and five controls × 3 trials. |
+| [Full run after routing fixes](evals/results/vertex-full-post-fix.json) | 195/195 | The same 65 cases × 3 trials, same dataset fingerprint and model. |
 
-Both runs used Gemini 3.1 Flash-Lite. After reviewing the failures, the policy was tightened to clarify reports that mention only portable lighting, route follow-ups without a verified matching repair to staff, and reject approval instructions embedded in a proposed split issue. The targeted rerun checks those fixes on the selected cases. A full post-fix run remains open. [Experiment notes](evals/results/README.md#rubric-v3-and-routing-fixes).
+All three runs used Gemini 3.1 Flash-Lite. After reviewing the failures, the policy was tightened to clarify reports that mention only portable lighting, route follow-ups without a verified matching repair to staff, and reject approval instructions embedded in a proposed split issue. The targeted rerun checks those fixes on the selected cases, and the full rerun confirms no other case regressed. The fixes were written against these cases, so 195/195 shows the regressions are closed, not that new reports will route correctly. The safety holdout is the test of that. Handbook recall@3 was 0.95 and hit@1 0.68 in both full runs, counting only trials where a handbook search ran; urgent handoffs skip the search by design. [Experiment notes](evals/results/README.md#rubric-v3-and-routing-fixes).
 
-The full run caught all 22 labeled triage hazards in every trial. The separate holdout below tests different hazard paraphrases and look-alikes, and currently has results for intake rules alone.
+Both full runs caught all 22 labeled triage hazards in every trial. The separate holdout below tests different hazard paraphrases and look-alikes, and currently has results for intake rules alone.
 
 ### Earlier chase experiments
 
@@ -88,7 +89,7 @@ I wrote the [30 resident-message cases](evals/resident-message-cases.json) by ha
 
 The [v3 triage dataset](evals/dataset.json) contains 65 synthetic English reports, with 13 normal, 12 edge, 22 hazard, 10 ambiguous and 8 adversarial cases. Five are handbook questions, including two the handbook cannot answer. The [safety holdout](evals/safety_holdout.json) adds 34 hazard paraphrases and 12 look-alikes. Each report runs three times with fixed inputs and separate expected outcomes.
 
-[Deterministic checks](evals/evaluators.py) cover routes, urgency, job matching, deadlines, literal evidence and writes before approval. Trajectory checks record who initiated each lookup, how many model calls ran and whether the model nominated the right job before Python checked it. Retrieval recall@3 and hit@1 check handbook passages, and the [retrieval sweep](evals/retrieval_sweep.py) measures the same production query without a chat model. With `--agent vertex --judge`, Gemini on Vertex AI drafts the reply and a separate GPT evaluator scores grounding, unsupported promises and whether the reply answers the resident. The [calibration runner](evals/calibrate.py) compares judge verdicts with reference labels. GPT scored six model drafts in the full Vertex run and passed all three criteria on each. The revised rubric matched 21/21 Codex-assisted reference labels on each of the reused development and test splits. Independent human labeling and a fresh holdout are still pending. [Judge results and error analysis](evals/results/README.md#gpt-judge-contrast-check).
+[Deterministic checks](evals/evaluators.py) cover routes, urgency, job matching, deadlines, literal evidence and writes before approval. Trajectory checks record who initiated each lookup, how many model calls ran and whether the model nominated the right job before Python checked it. Retrieval recall@3 and hit@1 check handbook passages, and the [retrieval sweep](evals/retrieval_sweep.py) measures the same production query without a chat model. With `--agent vertex --judge`, Gemini on Vertex AI drafts the reply and a separate GPT evaluator scores grounding, unsupported promises and whether the reply answers the resident. The [calibration runner](evals/calibrate.py) compares judge verdicts with reference labels. GPT scored six model drafts in each full Vertex run. It passed all three criteria on each draft in the first run and 17 of 18 verdicts in the post-fix run, failing grounding on a reply that assumed the resident had a job number. The revised rubric matched 21/21 Codex-assisted reference labels on each of the reused development and test splits. Independent human labeling and a fresh holdout are still pending. [Judge results and error analysis](evals/results/README.md#gpt-judge-contrast-check).
 
 ## Traces and reproducibility
 
@@ -120,7 +121,7 @@ Start in shadow mode with staff reviewing proposals and scoring them against the
 
 ## Limits
 
-This is a single workspace demo without authentication, multi-tenancy, a distributed worker or external message delivery. The model can miss hazards or time out; staff remain responsible for reviewing the queue. A full post-fix comparison and a live run on the separate safety holdout remain open. The judge has limited coverage on live drafts, and independent human calibration is still pending. The embedding similarity floor is provisional until `evals.retrieval_sweep --hybrid` is run against a real embedding model, and keyword search alone still returns passages for questions the handbook cannot answer, so those rely on the drafter declining.
+This is a single workspace demo without authentication, multi-tenancy, a distributed worker or external message delivery. The model can miss hazards or time out; staff remain responsible for reviewing the queue. A live run on the separate safety holdout remains open. The judge has limited coverage on live drafts, and independent human calibration is still pending. The embedding similarity floor is provisional until `evals.retrieval_sweep --hybrid` is run against a real embedding model, and keyword search alone still returns passages for questions the handbook cannot answer, so those rely on the drafter declining.
 
 ## How coding assistants helped
 

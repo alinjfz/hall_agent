@@ -57,6 +57,8 @@ Grounding now accepts a statement that staff need to confirm a fact left open by
 
 The [targeted Vertex rerun](vertex-routing-fixes.json) passed all 24 trials across the three failed cases and five controls. The policy now asks for clarification when portable lighting is the only evidence, sends explicit follow-ups without a verified matching repair to staff, rejects approval instructions as split issues and sends furniture misclassified as appliances to staff. It also restores articles and punctuation when the quoted split issue otherwise matches a complete sentence.
 
+The [full post-fix run](vertex-full-post-fix.json) repeated all 65 cases × 3 trials on the same dataset fingerprint and model and passed 195/195 deterministic checks, with no missed hazards or false alarms. GPT scored six model drafts and passed 17 of 18 verdicts. It failed grounding on one complaint reply that told the resident to give "your job number" where the handbook says "any job number"; the deterministic checks passed that draft. The run used four workers behind the shared rate limiter, so its 7.3 s median latency includes time queued for a request slot and is not comparable with the earlier run's 3.6 s. Retrieval metrics now count only trials where a handbook search ran. Rescored that way, the earlier full run has recall@3 0.95 and hit@1 0.68 (previously reported as 0.61 and 0.43 because urgent handoffs, which skip the search, were counted as misses); the post-fix run matches.
+
 ```sh
 for split in dev test; do
   LANGSMITH_TRACING=false .venv/bin/python -m evals.calibrate evals/judge_labels.json --split "$split"
