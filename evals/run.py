@@ -13,7 +13,6 @@ from hashlib import sha256
 from pathlib import Path
 from statistics import mean, median
 from tempfile import TemporaryDirectory
-from threading import Lock
 from time import perf_counter
 from uuid import NAMESPACE_URL, uuid5
 
@@ -365,10 +364,11 @@ def main():
 
     judge_metadata = {}
     if args.judge and not args.sync_only:
-        from evals.judge import RUBRICS, evaluator_for, judge_model_id
+        from evals.judge import RUBRIC_VERSION, RUBRICS, evaluator_for, judge_model_id
 
         try:
-            judge_metadata = {"judge_provider": "openai", "judge_model": judge_model_id()}
+            judge_metadata = {"judge_provider": "openai", "judge_model": judge_model_id(),
+                              "judge_rubric_version": RUBRIC_VERSION}
         except ValueError as exc:
             parser.error(str(exc))
 
@@ -386,30 +386,17 @@ def main():
         print(f"{DATASET_NAMES[args.suite]}: {len(examples)} cases, version {version}, sha256 {fingerprint}")
         return 0
 
-    inference_lock = Lock() if args.judge else None
-
     def target(inputs):
         case = by_input[json.dumps(inputs, sort_keys=True)]
-        with inference_lock if inference_lock else nullcontext():
-            return evaluate_case(inputs, topics=case["policy_topics"], expected_sections=case.get("policy_sections", []),
-                                 passes=args.passes, hosted=hosted, guidance=guidance, deadlines=deadlines)
+        return evaluate_case(inputs, topics=case["policy_topics"], expected_sections=case.get("policy_sections", []),
+                             passes=args.passes, hosted=hosted, guidance=guidance, deadlines=deadlines)
 
     checks = (*evaluators.CORE, evaluators.reply_grounded)
     graders = [langsmith_evaluator(check) for check in (
         *checks, *evaluators.TRAJECTORY, evaluators.intake_urgency, evaluators.retrieval_recall_at_3,
         evaluators.retrieval_hit_at_1)]
     if args.judge:
-        def serial_judge(criterion):
-            judge = evaluator_for(criterion)
-
-            def score(inputs, outputs):
-                with inference_lock:
-                    return judge(inputs, outputs)
-
-            score.__name__ = criterion
-            return score
-
-        graders.extend(serial_judge(criterion) for criterion in RUBRICS)
+        graders.extend(evaluator_for(criterion) for criterion in RUBRICS)
     experiment = client.evaluate(
         target, data=examples, evaluators=graders,
         experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,

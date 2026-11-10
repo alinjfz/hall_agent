@@ -4,6 +4,7 @@ import argparse
 import json
 from collections import Counter, defaultdict
 from html import escape
+from itertools import groupby
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -34,27 +35,27 @@ def json_details(title, value):
     return f'<details class="detail"><summary>{escape(title)}</summary><pre>{formatted}</pre></details>'
 
 
-def stat(title, value):
-    return f'<div class="stat"><span class="meta">{escape(title)}</span><strong>{escape(str(value))}</strong></div>'
+def stat(title, value, detail=None):
+    caption = f'<span class="hint">{escape(detail)}</span>' if detail else ""
+    return (
+        f'<div class="stat"><span class="meta">{escape(title)}</span>'
+        f'<strong>{escape(str(value))}</strong>{caption}</div>'
+    )
+
+
+def percent(count, total):
+    return f"{count / total:.1%}".replace(".0%", "%")
 
 
 def panel(title, content):
     return f'<section class="panel"><h2>{escape(title)}</h2>{content}</section>'
 
 
-def bar(name, count, maximum, caption):
-    return (
-        f'<div class="metric"><span>{escape(name)}</span>'
-        f'<span class="track" aria-hidden="true"><i style="width:{100 * count / maximum:.2f}%"></i></span>'
-        f'<span>{escape(caption)}</span></div>'
-    )
-
-
 def distribution(title, values):
     counts = Counter(values)
-    return panel(title, "".join(
-        bar(name, count, counts.total(), str(count)) for name, count in counts.most_common()
-    ))
+    rows = "".join(f"<div><dt>{escape(name)}</dt><dd>{count}</dd></div>"
+                   for name, count in counts.most_common())
+    return panel(title, f'<dl class="counts">{rows}</dl>')
 
 
 def explorer(scopes):
@@ -83,7 +84,7 @@ def preview(cases, sources, guidance_count):
     if "curated" in sources:
         yield stat("Curated guidance examples", guidance_count)
     yield "</div>"
-    yield '<div class="overview">'
+    yield '<h2 class="section-heading">What the fixtures cover</h2><div class="overview">'
     yield distribution("Cases by suite and slice", (scope_names[suite, case["slice"]] for suite, case in cases))
     yield distribution("Expected routes", (
         label(row["route"]) if row.get("route") else "Route not asserted" for row in outputs
@@ -153,37 +154,57 @@ def report(data):
     for row in rows:
         groups[row.get("slice") or "Unspecified slice"][row["case"]].append(row)
     yield '<div class="stats">'
-    yield stat("Trials recorded", len(rows))
-    yield stat("Passed", f'{counts["Pass"]} / {len(rows)}')
-    yield stat("Failed checks", counts["Fail"])
-    yield stat("Trial errors", counts["Error"])
+    yield stat("Trials passed", percent(counts["Pass"], len(rows)), f'{counts["Pass"]} of {len(rows)} trials')
+    yield stat("Trials with failed checks", percent(counts["Fail"], len(rows)), f'{counts["Fail"]} of {len(rows)} trials')
+    yield stat("Trials with run errors", percent(counts["Error"], len(rows)), f'{counts["Error"]} of {len(rows)} trials')
     if counts["Unscored"]:
-        yield stat("Unscored", counts["Unscored"])
+        yield stat("Unscored", percent(counts["Unscored"], len(rows)), f'{counts["Unscored"]} of {len(rows)} trials')
     yield "</div>"
-    yield '<div class="overview">'
-    bars = []
+    yield '<section class="panel outcome-panel"><h2>Trial outcomes by slice</h2>'
+    yield (
+        '<p class="hint">A pass means all applicable eval checks passed. '
+        'Judge scores and retrieval metrics are shown separately.</p>'
+        '<div class="table-wrap"><table><thead><tr><th scope="col">Slice</th>'
+        '<th scope="col">Passed</th><th scope="col">Pass rate</th><th scope="col">Failed</th><th scope="col">Errors</th>'
+        '<th scope="col">Unscored</th></tr></thead><tbody>'
+    )
     for name, cases in sorted(groups.items()):
         trials = [trial for case in cases.values() for trial in case]
-        passed = sum(trial_status(row) == "Pass" for row in trials)
-        bars.append(bar(label(name), passed, len(trials), f"{passed} / {len(trials)}"))
-    yield panel("Passing trials by slice", "".join(bars))
-    yield from scorecard(data)
-    yield "</div>"
-    scopes = [(str(index), label(name)) for index, name in enumerate(sorted(groups))]
-    yield explorer(scopes)
-    for (scope, name), (_, cases) in zip(scopes, sorted(groups.items())):
-        yield f'<section class="group" data-scope="{scope}"><h3>{escape(name)} · {len(cases)}</h3>'
-        for case, trials in sorted(cases.items()):
-            passed = sum(trial_status(row) == "Pass" for row in trials)
+        outcomes = Counter(map(trial_status, trials))
+        yield (
+            f'<tr><th scope="row">{escape(label(name))}</th>'
+            f'<td>{outcomes["Pass"]} of {len(trials)}</td>'
+            f'<td class="pass">{percent(outcomes["Pass"], len(trials))}</td>'
+            f'<td>{outcomes["Fail"]}</td><td>{outcomes["Error"]}</td><td>{outcomes["Unscored"]}</td></tr>'
+        )
+    yield "</tbody></table></div></section>"
+    scopes = {name: str(index) for index, name in enumerate(sorted(groups))}
+    yield explorer((scope, label(name)) for name, scope in scopes.items())
+    entries = []
+    for name, cases in groups.items():
+        for case, trials in cases.items():
+            outcomes = Counter(map(trial_status, trials))
+            priority = 0 if outcomes["Fail"] else 1 if outcomes["Pass"] < len(trials) else 2
+            entries.append((priority, name, case, trials, outcomes["Pass"]))
+    headings = ("Cases with failures", "Cases with errors or unscored trials", "All trials passed")
+    for (priority, name), entries_in_group in groupby(sorted(entries), key=lambda entry: entry[:2]):
+        heading = f"{headings[priority]} · {label(name)}"
+        yield f'<section class="group" data-scope="{scopes[name]}"><h3>{escape(heading)}</h3>'
+        for _, _, case, trials, passed in entries_in_group:
+            badge = f"{passed} of {len(trials)} passed · {percent(passed, len(trials))}"
+            style = ("fail", "", "pass")[priority]
             yield (
                 f'<details class="case"><summary><strong>{escape(case)}</strong>'
-                f'<span class="tags"><span class="tag">{passed} / {len(trials)} trials passed</span></span>'
+                f'<span class="tags"><span class="tag {style}">{badge}</span></span>'
                 '</summary><div class="case-body">'
             )
             for index, row in enumerate(trials, 1):
                 status = trial_status(row)
                 style = {"Pass": "pass", "Fail": "fail", "Error": "fail"}.get(status, "meta")
-                yield f'<details class="detail"><summary>Trial {index} · <strong class="{style}">{status}</strong></summary>'
+                failed = [label(key) for key, value in row.get("checks", {}).items()
+                          if value is not None and not value]
+                summary = f"{status} · {', '.join(failed)}" if failed else status
+                yield f'<details class="detail"><summary>Trial {index} · <strong class="{style}">{escape(summary)}</strong></summary>'
                 expected = row.get("expected")
                 actual = row.get("actual")
                 if isinstance(expected, dict):
@@ -205,8 +226,14 @@ def report(data):
                 yield "</details>"
             yield "</div></details>"
         yield "</section>"
-    yield json_details("Run metadata", {key: value for key, value in data.items() if key != "results"})
     yield "</section>"
+    metrics = list(scorecard(data))
+    if metrics:
+        yield '<details class="panel outcome-panel"><summary><strong>Safety, retrieval and interpretation metrics</strong></summary>'
+        yield '<div class="overview">'
+        yield from metrics
+        yield "</div></details>"
+    yield json_details("Run metadata", {key: value for key, value in data.items() if key != "results"})
 
 
 def main():
@@ -254,7 +281,7 @@ def main():
             parser.error(f"Unknown case IDs: {', '.join(sorted(unknown))}")
         cases = [(suite, case) for suite, case in cases if not args.case or case["id"] in args.case]
         mode, title = "Fixture preview", "Evaluation coverage"
-        subtitle = "Expected outcomes from local fixtures. Live scores appear when you load a saved run."
+        subtitle = "Fixture counts and expected outcomes only. Generate a saved-run report to see passes and failures."
         content = preview(cases, paths, guidance_count)
 
     header = (

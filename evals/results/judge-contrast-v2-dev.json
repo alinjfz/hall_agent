@@ -1,0 +1,35 @@
+{
+  "judge_provider": "openai",
+  "judge_model": "gpt-6-luna",
+  "judge_rubric_version": "2",
+  "split": "dev",
+  "grounded": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 0.75,
+    "bad_total": 3,
+    "good_total": 4,
+    "disagreements": [
+      {
+        "id": "lighting-explicit-unknown",
+        "criterion": "grounded",
+        "label": true,
+        "reason": "The deadline and the statement that the job record does not document an engineer visit are supported by the job record. However, the claim that staff still need to confirm whether an engineer visited is not established by the supplied sources.",
+        "verdict": false
+      }
+    ]
+  },
+  "no_unsupported_promise": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 1.0,
+    "bad_total": 1,
+    "good_total": 6,
+    "disagreements": []
+  },
+  "answers_resident": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 1.0,
+    "bad_total": 2,
+    "good_total": 5,
+    "disagreements": []
+  }
+}

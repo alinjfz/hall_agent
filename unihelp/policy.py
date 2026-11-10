@@ -22,6 +22,16 @@ CONTAINED_LEAK = re.compile(
     r"(?:basin|sink|bath|shower tray|drain)\b",
     re.I,
 )
+PORTABLE_LIGHT = re.compile(
+    r"\b(?:desk lamps?|table lamps?|floor lamps?|torches|torch|flashlights?|lanterns?|portable lights?)\b", re.I,
+)
+FIXED_LIGHT = re.compile(
+    r"\b(?:fixed (?:lights?|lighting|fixtures?)|(?:ceiling|wall) (?:lights?|fixtures?)|sconces?)\b", re.I,
+)
+FURNITURE = re.compile(r"\b(?:chairs?|tables?|desks?|wardrobes?|bed frames?|sofas?)$", re.I)
+APPROVAL_DIRECTIVE = re.compile(r"\bapprove\s+(?:the\s+)?(?:escalation|closure|creation)\b", re.I)
+FOLLOW_UP = re.compile(r"^\s*(?:i(?:['’]m| am)\s+)?(?:following up on|chasing)\b", re.I)
+ISSUE_SENTENCE_START = re.compile(r"(?:^|[.!?\n])\s*(?P<article>(?:the|an?)\s+)?$", re.I)
 
 
 def manual(reason):
@@ -161,12 +171,23 @@ def handle_multiple(report, interpretation, policies):
             or len({issue.casefold() for issue in issues}) != len(issues)):
         return manual("Review the individual issues and their locations manually.")
     end = 0
+    verified_issues = []
     for issue in issues:
         start = message.find(issue, end)
         if not issue or start < 0:
             return manual("The individual issues could not be verified against the report.")
+        if APPROVAL_DIRECTIVE.search(issue):
+            return manual("Review the report before splitting workflow instructions into repair issues.")
         end = start + len(issue)
-    return {"kind": "split", "issues": issues, "rule": rule}
+        prefix = ISSUE_SENTENCE_START.search(message[:start])
+        ends_with_punctuation = issue[-1] in ".!?"
+        if prefix and (ends_with_punctuation or end == len(message) or message[end] in ".!?"):
+            if prefix.group("article"):
+                start = prefix.start("article")
+            if not ends_with_punctuation and end < len(message):
+                end += 1
+        verified_issues.append(message[start:end])
+    return {"kind": "split", "issues": verified_issues, "rule": rule}
 
 
 def handle_question(interpretation, policies, sections, message):
@@ -219,6 +240,8 @@ def duplicate_proposal(jobs, policies, evidence):
 
 def handle_repair(report, interpretation, jobs, policies, now, job_reports):
     message, evidence = report["message"], interpretation.evidence
+    if FOLLOW_UP.match(message) or FOLLOW_UP.match(evidence):
+        return manual("A follow-up needs a verified open repair before staff can act on it.")
     category = interpretation.category
     if category is None:
         return manual("The repair category could not be verified.")
@@ -226,6 +249,8 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
     fitting = (interpretation.fitting or "").strip()
     if not fitting or fitting.casefold() not in evidence.casefold():
         return manual("The affected fitting could not be verified.")
+    if category == "appliance" and FURNITURE.search(fitting):
+        return manual("Staff need to review this furniture fault before selecting a repair policy.")
     duplicate_jobs = [job for job in jobs if job["fitting"].casefold() == fitting.casefold()]
     if duplicate_jobs:
         return duplicate_proposal(duplicate_jobs, policies, message)
@@ -251,13 +276,19 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
         return repair_proposal(report, fitting, None, rule, category)
     if not rule:
         return manual("The lighting priority policy could not be verified.")
-    if interpretation.other_lighting_works is None:
+    other_works = interpretation.other_lighting_works
+    lighting_evidence = interpretation.lighting_evidence
+    if other_works is not None and not quoted_in(lighting_evidence, message):
+        return manual("The other lighting in the room could not be verified.")
+    if lighting_evidence and PORTABLE_LIGHT.search(lighting_evidence):
+        other_lights = re.sub(rf"(?<!\w){re.escape(fitting)}(?!\w)", "", lighting_evidence, flags=re.I)
+        if not FIXED_LIGHT.search(other_lights):
+            other_works = None
+    if other_works is None:
         return {"kind": "lighting_question", "fitting": fitting, "rule": rule,
                 "question": rule.get("clarification_question", "Does another light still work in the same room?")}
-    if not quoted_in(interpretation.lighting_evidence, message):
-        return manual("The other lighting in the room could not be verified.")
     confirmed_at = datetime.fromisoformat(report["received_at"]) if report.get("received_at") else now
-    return repair_proposal(report, fitting, interpretation.other_lighting_works, rule, confirmed_at=confirmed_at)
+    return repair_proposal(report, fitting, other_works, rule, confirmed_at=confirmed_at)
 
 
 def identifies_fitting(evidence, fitting):

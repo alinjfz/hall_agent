@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from evals.judge import RUBRICS, judge_model_id, judge_reply
+from evals.judge import RUBRIC_VERSION, RUBRICS, judge_model_id, judge_reply
 
 
 def calibration(rows):
@@ -46,7 +46,8 @@ def main():
             outcome = judge_reply(criterion, report=case["report"], reply=case["reply"],
                                   sections=case["sections"], job=case.get("job"))
             rows.append({"id": case["id"], "criterion": criterion, "label": label, **outcome.model_dump()})
-    output = json.dumps({"judge_provider": "openai", "judge_model": model, "split": args.split,
+    output = json.dumps({"judge_provider": "openai", "judge_model": model, "judge_rubric_version": RUBRIC_VERSION,
+                         "split": args.split,
                          **calibration(rows)}, indent=2) + "\n"
     if args.output:
         args.output.write_text(output)

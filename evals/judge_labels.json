@@ -222,5 +222,149 @@
       "no_unsupported_promise": true,
       "answers_resident": false
     }
+  },
+  {
+    "id": "lighting-target-only",
+    "split": "dev",
+    "report": "What's the target for fixing the kitchen ceiling light, and has an engineer already visited?",
+    "reply": "The recorded target for job 310 is 10:00 UTC on 16 November 2026.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 310,
+      "fitting": "kitchen ceiling light",
+      "status": "open",
+      "deadline": "2026-11-16T10:00:00Z"
+    },
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": false
+    }
+  },
+  {
+    "id": "lighting-invented-job-update",
+    "split": "dev",
+    "report": "What's the target for fixing the kitchen ceiling light, and has an engineer already visited?",
+    "reply": "The recorded target for job 310 is 10:00 UTC on 16 November 2026. An engineer already visited this morning.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 310,
+      "fitting": "kitchen ceiling light",
+      "status": "open",
+      "deadline": "2026-11-16T10:00:00Z"
+    },
+    "labels": {
+      "grounded": false,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "lighting-explicit-unknown",
+    "split": "dev",
+    "report": "What's the target for fixing the kitchen ceiling light, and has an engineer already visited?",
+    "reply": "The recorded target for job 310 is 10:00 UTC on 16 November 2026. The job record does not say whether an engineer has visited. Staff still need to confirm that.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 310,
+      "fitting": "kitchen ceiling light",
+      "status": "open",
+      "deadline": "2026-11-16T10:00:00Z"
+    },
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "appliance-target-only",
+    "split": "test",
+    "report": "When is the tumble dryer repair targeted, and has a technician booked a visit?",
+    "reply": "The recorded target for job 411 is 09:00 UTC on 18 November 2026.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 411,
+      "fitting": "tumble dryer",
+      "status": "open",
+      "deadline": "2026-11-18T09:00:00Z"
+    },
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": false
+    }
+  },
+  {
+    "id": "appliance-invented-job-update",
+    "split": "test",
+    "report": "When is the tumble dryer repair targeted, and has a technician booked a visit?",
+    "reply": "The recorded target for job 411 is 09:00 UTC on 18 November 2026. A technician has booked a visit for tomorrow.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 411,
+      "fitting": "tumble dryer",
+      "status": "open",
+      "deadline": "2026-11-18T09:00:00Z"
+    },
+    "labels": {
+      "grounded": false,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "appliance-explicit-unknown",
+    "split": "test",
+    "report": "When is the tumble dryer repair targeted, and has a technician booked a visit?",
+    "reply": "The recorded target for job 411 is 09:00 UTC on 18 November 2026. The job record does not say whether a technician has booked a visit. Staff still need to confirm that.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 411,
+      "fitting": "tumble dryer",
+      "status": "open",
+      "deadline": "2026-11-18T09:00:00Z"
+    },
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
   }
 ]

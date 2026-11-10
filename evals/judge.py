@@ -9,12 +9,24 @@ from pydantic import BaseModel, Field
 from unihelp.models import configured_provider, model_id, openai_model
 
 
+RUBRIC_VERSION = "3"
 RUBRICS = {
-    "grounded": "Pass if every factual policy statement in the reply is supported by the retrieved passages or job record.",
+    "grounded": "Pass only if every factual claim about residence policy or the resident's job is supported "
+                "by the retrieved passages or job record. Check claims about status, appointments, visits and "
+                "completed work. A resident's report can be acknowledged as their account, but does not verify "
+                "staff actions. When the supplied evidence leaves a requested fact unknown, stating that "
+                "staff still need to confirm that fact is an acknowledgment of uncertainty. Pass that "
+                "wording unless it claims a check has been scheduled or makes another unsupported factual "
+                "claim. If there are no factual claims about policy or the job, pass.",
     "no_unsupported_promise": "Pass if the reply makes no guarantee or promise the job record does not support. "
-                              "A recorded target is not a guarantee of completion.",
-    "answers_resident": "Pass if the reply directly addresses what the resident asked, or explicitly explains "
-                        "what staff still need to confirm.",
+                              "A recorded target is not a guarantee of completion. A bare claim that a booking "
+                              "or visit already happened is a factual claim for grounding, not a promise. "
+                              "Fail an appointment statement here only if it also commits to future attendance "
+                              "or another future outcome beyond the evidence.",
+    "answers_resident": "Pass only if the reply addresses every material part of the resident's request. "
+                        "For each part, it must give an answer or explicitly explain what staff still need "
+                        "to confirm. A partial answer or generic acknowledgment fails. Judge coverage only. "
+                        "Factual accuracy and promises are scored separately.",
 }
 
 

@@ -79,6 +79,12 @@ Configure Vertex with `GOOGLE_CLOUD_PROJECT` and either `GOOGLE_API_KEY` or Appl
 make eval EVAL_ARGS="--agent vertex --judge --case question-complaint-contact --output /tmp/unihelp-gpt-judge.json"
 ```
 
-The GPT judge receives the synthetic resident report, draft, retrieved passages and job record. Each rubric returns a binary score and a short explanation. Trials without a model draft have no numeric judge score. The JSON records both model IDs and per-trial verdicts. Add `--langsmith hosted` to send the experiment and evaluator feedback to your configured LangSmith project.
+The GPT judge receives the synthetic resident report, draft, retrieved passages and job record. Each rubric returns a binary score and a short explanation. Grounding checks factual claims about policy and the specific job. Coverage checks every material part of the resident's request. Trials without a model draft have no numeric judge score. The JSON records both model IDs, the rubric version and per-trial verdicts. Add `--langsmith hosted` to send the experiment and evaluator feedback to your configured LangSmith project.
 
-For calibration, have a reviewer label drafts before looking at judge scores. The input is a JSON list with `id`, `split` (`dev` or `test`), `report`, `reply`, `sections`, `job` and three Boolean `labels` named `grounded`, `no_unsupported_promise` and `answers_resident`. Tune the rubrics on dev, then run `.venv/bin/python -m evals.calibrate labels.json --split test` to measure how often GPT catches bad replies and passes good ones on held-out examples.
+Run the full triage suite by dropping `--case`. Use two workers to overlap Vertex calls while keeping the per-process request pacing.
+
+```sh
+make eval EVAL_ARGS="--agent vertex --judge --concurrency 2 --output evals/results/vertex-gpt-triage.json"
+```
+
+For calibration, have a reviewer label drafts before looking at judge scores. The input is a JSON list with `id`, `split` (`dev` or `test`), `report`, `reply`, `sections`, `job` and three Boolean `labels` named `grounded`, `no_unsupported_promise` and `answers_resident` (coverage). Tune the rubrics on dev, then run `.venv/bin/python -m evals.calibrate labels.json --split test` to measure how often GPT catches bad replies and passes good ones on held-out examples.

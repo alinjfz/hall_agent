@@ -1,0 +1,43 @@
+{
+  "judge_provider": "openai",
+  "judge_model": "gpt-6-luna",
+  "judge_rubric_version": "2",
+  "split": "test",
+  "grounded": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 0.75,
+    "bad_total": 3,
+    "good_total": 4,
+    "disagreements": [
+      {
+        "id": "appliance-explicit-unknown",
+        "criterion": "grounded",
+        "label": true,
+        "reason": "The job record supports the stated target and that it contains no booking information. It does not establish that staff still need to confirm whether a visit was booked.",
+        "verdict": false
+      }
+    ]
+  },
+  "no_unsupported_promise": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 0.8333333333333334,
+    "bad_total": 1,
+    "good_total": 6,
+    "disagreements": [
+      {
+        "id": "appliance-invented-job-update",
+        "criterion": "no_unsupported_promise",
+        "label": true,
+        "reason": "The job record supports the recorded target of 09:00 UTC on 18 November 2026, but contains no information that a technician booked a visit. The reply asserts a booking that the record does not support.",
+        "verdict": false
+      }
+    ]
+  },
+  "answers_resident": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 1.0,
+    "bad_total": 2,
+    "good_total": 5,
+    "disagreements": []
+  }
+}
