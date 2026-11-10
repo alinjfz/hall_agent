@@ -151,6 +151,24 @@ def embedding_model():
 
 
 def structured_model(model, schema, **kwargs):
+    if isinstance(model, VertexChatModel) and (tools := kwargs.get("tools")):
+        # Gemini's JSON schema adapter does not accept extra tools. Offer the
+        # final draft schema as a function alongside the handbook lookup.
+        def parse(message):
+            calls = message.tool_calls
+            parsed = None
+            raw = message
+            if len(calls) == 1 and calls[0]["name"] == schema.__name__ and not message.invalid_tool_calls:
+                # The graph should only execute real lookup calls.
+                raw = None
+                try:
+                    parsed = schema.model_validate(calls[0]["args"])
+                except ValueError:
+                    pass
+            return {"raw": raw, "parsed": parsed} if kwargs.get("include_raw") else parsed
+
+        return model.bind_tools([schema, *tools], tool_choice="any") | RunnableLambda(parse)
+
     if not isinstance(model, tuple):
         return model.with_structured_output(schema, **kwargs)
 

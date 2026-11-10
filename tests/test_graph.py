@@ -261,6 +261,36 @@ def test_draft_can_cite_a_section_found_by_its_own_search():
     assert lookup.outputs["documents"][0].page_content == shown[1]["text"]
 
 
+@pytest.mark.parametrize("lookup", [False, True])
+def test_vertex_drafts_directly_or_after_a_handbook_lookup(monkeypatch, lookup):
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from unihelp.models import VertexChatModel
+    from unihelp.replies import ReplyDraft
+
+    section = "keys-and-access" if lookup else SECTION["id"]
+    fields = {"body": "Ask residence staff for help.", "section_ids": [section]}
+
+    def bind_tools(self, tools, *, tool_choice):
+        assert tools == [ReplyDraft, graph.search_policy] and tool_choice == "any"
+        name, args = ("search_policy", {"query": "spare key"}) if lookup else ("ReplyDraft", fields)
+        return RunnableLambda(lambda _: AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": "call"}]))
+
+    def generate(self, messages, config=None, **kwargs):
+        assert lookup and isinstance(messages[-1], ToolMessage) and messages[-1].tool_call_id == "call"
+        return AIMessage(content=json.dumps(fields))
+
+    monkeypatch.setattr(VertexChatModel, "bind_tools", bind_tools)
+    monkeypatch.setattr(VertexChatModel, "invoke", generate)
+    model = VertexChatModel.model_construct()
+    draft, shown = graph.draft_with_search(lambda **_: model, time() + 20,
+                                           {"report": "Can I get a spare key?", "job": None}, [SECTION])
+    assert draft.section_ids == [section]
+    assert section in {passage["id"] for passage in shown}
+
+
 def question_report(store, message="What are the quiet hours in my building?"):
     report_id = store.add_report("Flat 1", "Question", message)
     return report_id, store.report(report_id)
