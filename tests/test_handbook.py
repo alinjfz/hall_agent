@@ -1,5 +1,5 @@
-from halldesk.context import retrieve_policy
-from halldesk.retrieval import handbook_index, search_handbook
+from unihelp.context import retrieve_policy
+from unihelp.retrieval import handbook_index, search_handbook
 
 
 def test_handbook_targets_match_structured_policy():
@@ -41,7 +41,7 @@ class KeywordEmbeddings:
 
 
 def test_embeddings_recover_matches_that_keywords_miss():
-    from halldesk.retrieval import handbook_retriever
+    from unihelp.retrieval import handbook_retriever
 
     assert search_handbook("Mi grifo gotea") == []  # Lexical search cannot cross languages.
     retriever = handbook_retriever(embeddings=KeywordEmbeddings(), model_name="keyword-test")
@@ -53,7 +53,7 @@ def test_embeddings_recover_matches_that_keywords_miss():
 
 
 def test_embedding_outage_falls_back_to_keyword_search():
-    from halldesk.retrieval import handbook_retriever
+    from unihelp.retrieval import handbook_retriever
 
     class Broken(KeywordEmbeddings):
         def embed_query(self, text):
@@ -71,7 +71,7 @@ def test_embedding_outage_falls_back_to_keyword_search():
 
 
 def test_query_adds_handbook_terms_for_the_interpreted_facts():
-    from halldesk.context import handbook_query
+    from unihelp.context import handbook_query
 
     assert handbook_query("Mi grifo gotea") == "Mi grifo gotea"
     query = handbook_query("Mi grifo gotea", intent="new", category="plumbing", fitting="grifo")

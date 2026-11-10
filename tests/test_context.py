@@ -7,9 +7,9 @@ import httpx
 from langchain_core.messages import AIMessage
 
 from tests.test_scripted_cases import evaluate
-from halldesk.context import relevant_examples, retrieve_policy
-from halldesk.store import Store
-from halldesk.workflow import review, revise, triage
+from unihelp.context import relevant_examples, retrieve_policy
+from unihelp.store import Store
+from unihelp.workflow import review, revise, triage
 from tests.scripted_model import ScriptedModel, scripted
 
 
@@ -46,11 +46,11 @@ def test_policy_and_guidance():
                 }}],
             })
 
-        env = {"HALL_PROVIDER": "lmstudio", "HALL_LM_STUDIO_MODEL": "test-gemma", "HALL_MODEL": "",
-               "HALL_LM_STUDIO_BASE_URL": "http://127.0.0.1:1234/v1", "HALL_POLICY_FILE": ""}
+        env = {"UNIHELP_PROVIDER": "lmstudio", "UNIHELP_LM_STUDIO_MODEL": "test-gemma", "UNIHELP_MODEL": "",
+               "UNIHELP_LM_STUDIO_BASE_URL": "http://127.0.0.1:1234/v1", "UNIHELP_POLICY_FILE": ""}
         with httpx.Client(transport=httpx.MockTransport(respond)) as client, \
              patch.dict("os.environ", env), \
-             patch("halldesk.models.local_http_client", return_value=client):
+             patch("unihelp.models.local_http_client", return_value=client):
             case = store.eval_cases("holdout")[0]
             score = evaluate(case["expected"] | {"snapshot": case["snapshot"], "name": case["name"],
                                                  "guidance": store.eval_cases("guidance")})
@@ -76,7 +76,7 @@ def test_policy_and_guidance():
             assert "The wall light stopped working" not in interpretations()[-1]["messages"][-1]["content"]
             assert store.jobs() == []
 
-        with patch.dict("os.environ", {"HALL_POLICY_FILE": str(Path(directory) / "missing.json")}):
+        with patch.dict("os.environ", {"UNIHELP_POLICY_FILE": str(Path(directory) / "missing.json")}):
             invalid = triage(store, guide, model=scripted("", "review", {}))
             assert invalid["kind"] == "manual" and invalid["retrieval"]["policies"] == []
 
@@ -85,7 +85,7 @@ def test_policy_and_guidance():
         policies["lighting"]["other_lighting_works"]["days"] = 9
         pack.write_text(json.dumps(list(policies.values())))
         report_id = store.add_report("Flat 3", "Replace lamp", "Ceiling light broke. Another light still works.")
-        with patch.dict("os.environ", {"HALL_POLICY_FILE": str(pack)}):
+        with patch.dict("os.environ", {"UNIHELP_POLICY_FILE": str(pack)}):
             proposal = triage(store, report_id, model=scripted(store.report(report_id)["location"], "lighting", {
                 "intent": "new", "candidate_ids": [], "evidence": "Ceiling light", "fitting": "Ceiling light",
                 "other_lighting_works": True, "lighting_evidence": "Another light still works.",

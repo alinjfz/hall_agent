@@ -1,7 +1,7 @@
 {
   "dependencies": ["."],
   "graphs": {
-    "unihelp": "./halldesk/graph.py:graph"
+    "unihelp": "./unihelp/graph.py:graph"
   },
   "env": ".env"
 }

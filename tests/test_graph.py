@@ -3,12 +3,12 @@ from time import time
 import pytest
 from langchain_core.runnables import RunnableLambda
 
-from halldesk import graph
-from halldesk.context import retrieve_policy
-from halldesk.replies import grounded_reply
-from halldesk.safety import SafetyCheck
-from halldesk.store import ReviewError, Store
-from halldesk.workflow import review, triage
+from unihelp import graph
+from unihelp.context import retrieve_policy
+from unihelp.replies import grounded_reply
+from unihelp.safety import SafetyCheck
+from unihelp.store import ReviewError, Store
+from unihelp.workflow import review, triage
 
 
 def test_emergency_is_ready_at_intake_and_records_only_one_reply(tmp_path):
@@ -33,7 +33,7 @@ def test_emergency_is_ready_at_intake_and_records_only_one_reply(tmp_path):
     SafetyCheck(hazard="fire", evidence="My radiator is cold.", assessment="not_current"),
 ], ids=["timeout", "fabricated", "changed-case", "uncertain", "inconsistent"])
 def test_unverified_safety_goes_to_urgent_review(tmp_path, check):
-    from halldesk.interpretation import Interpretation
+    from unihelp.interpretation import Interpretation
 
     class Model:
         def with_structured_output(self, schema, **kwargs):
@@ -96,8 +96,8 @@ def test_reply_rejects_invented_facts(body, sources, valid):
 
 
 def test_transient_model_failure_retries_without_creating_a_job(tmp_path):
-    from halldesk.models import TransientModelError
-    from halldesk.interpretation import Interpretation
+    from unihelp.models import TransientModelError
+    from unihelp.interpretation import Interpretation
 
     class FlakyModel:
         calls = 0
@@ -169,7 +169,7 @@ def test_staff_can_review_after_publish_checkpoint_is_interrupted(tmp_path, monk
 def test_interpretation_is_one_call_without_tools(tmp_path):
     import json
 
-    from halldesk.interpretation import Interpretation
+    from unihelp.interpretation import Interpretation
 
     store = Store(tmp_path / "workspace.sqlite3")
     store.seed()
@@ -246,7 +246,7 @@ def test_draft_can_cite_a_section_found_by_its_own_search():
     from langsmith import trace, tracing_context
 
     from evals.run import descendants, local_trace_client
-    from halldesk.replies import ReplyDraft
+    from unihelp.replies import ReplyDraft
 
     search = {"raw": AIMessage(content="", tool_calls=[
         {"name": "search_policy", "args": {"query": "spare key"}, "id": "lookup"}])}
@@ -309,7 +309,7 @@ def test_question_the_handbook_does_not_cover_goes_to_staff(tmp_path):
 
 
 def test_evidence_ignores_case_spacing_and_typographic_quotes(tmp_path):
-    from halldesk.evidence import quoted_in
+    from unihelp.evidence import quoted_in
     from tests.scripted_model import scripted
 
     message = "The radiator in my room  isn’t heating."
@@ -326,7 +326,7 @@ def test_evidence_ignores_case_spacing_and_typographic_quotes(tmp_path):
 
 @pytest.mark.parametrize("interpret_times_out", [False, True])
 def test_clean_safety_check_never_raises_an_alert(tmp_path, interpret_times_out):
-    from halldesk.interpretation import Interpretation
+    from unihelp.interpretation import Interpretation
 
     class Model:
         def with_structured_output(self, schema, **kwargs):

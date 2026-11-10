@@ -8,7 +8,7 @@ from unicodedata import category, normalize
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from halldesk.context import REPAIR_CATEGORIES, message_key, same_policy, similar_messages
+from unihelp.context import REPAIR_CATEGORIES, message_key, same_policy, similar_messages
 
 LONDON = ZoneInfo("Europe/London")
 
@@ -195,12 +195,12 @@ class Store:
             return report_id
 
     def intake_safety(self, db, report_id, location, message, now):
-        from halldesk.safety import safety_signals
+        from unihelp.safety import safety_signals
 
         if not safety_signals(message):
             return
-        from halldesk.context import retrieve_policy
-        from halldesk.policy import build_proposal
+        from unihelp.context import retrieve_policy
+        from unihelp.policy import build_proposal
 
         context = {"policies": retrieve_policy(), "jobs": self.read_jobs(db, location), "examples": [],
                    "at": now.isoformat()}
@@ -244,8 +244,8 @@ class Store:
                     or type(expected.get("days")) is not int or not 1 <= expected["days"] <= 90
                     or expected.get("category", "lighting") not in REPAIR_CATEGORIES):
                 raise ReviewError("Choose the expected repair category, priority, and target.")
-            from halldesk.context import retrieve_policy
-            from halldesk.interpretation import Interpretation
+            from unihelp.context import retrieve_policy
+            from unihelp.interpretation import Interpretation
 
             if interpretation is not None:
                 try:
@@ -392,7 +392,7 @@ class Store:
 
     @staticmethod
     def staff_id(reviewer_id=None):
-        return reviewer_id or os.getenv("HALL_REVIEWER_ID") or "staff"
+        return reviewer_id or os.getenv("UNIHELP_REVIEWER_ID") or "staff"
 
     def record_activity(self, db, report_id, event, details=None, at=None, *, reviewer_id="system"):
         db.execute("INSERT INTO report_activity (report_id,at,event,details,reviewer_id) VALUES (?,?,?,?,?)",
@@ -580,7 +580,7 @@ class Store:
                 raise ReviewError("This report is already handled.")
             if report["proposal"] is None:
                 raise ReviewError("This report has no current proposal.")
-            from halldesk.proposals import parse_proposal
+            from unihelp.proposals import parse_proposal
 
             proposal_data = json.loads(report["proposal"])
             proposal = parse_proposal(proposal_data)

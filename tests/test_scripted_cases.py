@@ -5,8 +5,8 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from halldesk.store import Store
-from halldesk.workflow import review, revise, triage
+from unihelp.store import Store
+from unihelp.workflow import review, revise, triage
 from tests.scripted_model import scripted
 
 
@@ -166,7 +166,7 @@ def test_live_dataset_contract():
     from collections import Counter
 
     from evals.run import load_cases
-    from halldesk.retrieval import handbook_index
+    from unihelp.retrieval import handbook_index
 
     cases = load_cases("triage")
     counts = Counter(case["slice"] for case in cases)

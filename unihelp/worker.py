@@ -4,9 +4,9 @@ from time import sleep
 
 from dotenv import load_dotenv
 
-from halldesk.models import configured_provider, setup_issue
-from halldesk.store import Store
-from halldesk.workflow import process_pending
+from unihelp.models import configured_provider, setup_issue
+from unihelp.store import Store
+from unihelp.workflow import process_pending
 
 
 def main():
@@ -16,8 +16,8 @@ def main():
     args = parser.parse_args()
     if issue := setup_issue(configured_provider()):
         parser.error(issue)
-    store = Store(os.getenv("HALL_DB", "halldesk.sqlite3"))
-    store.seed(samples=os.getenv("HALL_SEED_SAMPLE", "").lower() == "true")
+    store = Store(os.getenv("UNIHELP_DB", "unihelp.sqlite3"))
+    store.seed(samples=os.getenv("UNIHELP_SEED_SAMPLE", "").lower() == "true")
     try:
         while True:
             if process_pending(store):

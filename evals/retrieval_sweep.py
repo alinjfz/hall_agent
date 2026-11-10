@@ -3,7 +3,7 @@
 Queries are built by the production `handbook_query`. "message" uses the report text
 alone; "facts" adds the intent and category a correct interpretation would supply,
 taken from each case's expected outcome. Lexical search needs no services. Pass
---hybrid with HALL_EMBEDDING_MODEL set to sweep the embedding similarity floor.
+--hybrid with UNIHELP_EMBEDDING_MODEL set to sweep the embedding similarity floor.
 """
 
 import argparse
@@ -12,8 +12,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from halldesk import retrieval
-from halldesk.context import REPAIR_CATEGORIES, handbook_query
+from unihelp import retrieval
+from unihelp.context import REPAIR_CATEGORIES, handbook_query
 
 CASES = json.loads((Path(__file__).with_name("dataset.json")).read_text())
 INTENTS = {"escalate": "chase", "draft": "chase", "job_question": "chase", "create": "new",
@@ -60,7 +60,7 @@ def sweep(hybrid=False, thresholds=None):
             setattr(retrieval, name, threshold)
             retriever = retrieval.handbook_retriever()
             if hybrid and retriever.metadata["retrieval_mode"] != "hybrid":
-                raise SystemExit("Set HALL_EMBEDDING_MODEL and start the embedding service for --hybrid.")
+                raise SystemExit("Set UNIHELP_EMBEDDING_MODEL and start the embedding service for --hybrid.")
             for mode in ("message", "facts"):
                 rows.append({name.lower(): threshold, "slice": "english", "query": mode,
                              **score(cases, mode, retriever.invoke)})

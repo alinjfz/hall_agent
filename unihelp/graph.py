@@ -26,17 +26,17 @@ from langgraph.runtime import Runtime
 from langgraph.types import Command, RetryPolicy, interrupt
 from langsmith import get_current_run_tree, traceable
 
-from halldesk.context import handbook_query, relevant_examples, retrieve_policy, search_rules
-from halldesk.interpretation import Interpretation
-from halldesk.models import model_timeout, structured_model, transient_error, triage_model
-from halldesk.policy import build_proposal, context_issue, identifies_fitting
-from halldesk.proposals import parse_proposal
-from halldesk.replies import ReplyDraft, grounded_reply
-from halldesk.review_policy import revise_proposal
-from halldesk.retrieval import search_handbook
-from halldesk.safety import SafetyCheck, safety_signals
-from halldesk.store import ReviewError, Store
-from halldesk.tools import search_policy
+from unihelp.context import handbook_query, relevant_examples, retrieve_policy, search_rules
+from unihelp.interpretation import Interpretation
+from unihelp.models import model_timeout, structured_model, transient_error, triage_model
+from unihelp.policy import build_proposal, context_issue, identifies_fitting
+from unihelp.proposals import parse_proposal
+from unihelp.replies import ReplyDraft, grounded_reply
+from unihelp.review_policy import revise_proposal
+from unihelp.retrieval import search_handbook
+from unihelp.safety import SafetyCheck, safety_signals
+from unihelp.store import ReviewError, Store
+from unihelp.tools import search_policy
 
 PROMPTS = Path(__file__).with_name("prompts")
 PROMPT = (PROMPTS / "interpret.txt").read_text()

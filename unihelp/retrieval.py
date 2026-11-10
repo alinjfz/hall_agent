@@ -140,7 +140,7 @@ def dense_store(embeddings, model_name):
 
 def handbook_retriever(limit=3, *, embeddings=None, model_name=None):
     if embeddings is None:
-        from halldesk.models import embedding_model
+        from unihelp.models import embedding_model
 
         embeddings, model_name = embedding_model()
     sections, lexical = handbook_index()

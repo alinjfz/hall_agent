@@ -36,7 +36,7 @@ def no_write_before_approval(outputs):
 
 def evidence_is_verbatim(inputs, outputs):
     """Wording must match the report; case, spacing and typographic quotes may differ."""
-    from halldesk.evidence import quoted_in
+    from unihelp.evidence import quoted_in
     return all(quoted_in(excerpt, inputs["message"]) for excerpt in outputs["evidence"])
 
 
@@ -116,9 +116,9 @@ def reply_grounded(outputs, reference_outputs):
     if not outputs.get("reply_sources"):
         if not reference_outputs.get("reply_grounded"):
             return None
-        from halldesk.replies import grounded_reply_facts
+        from unihelp.replies import grounded_reply_facts
         return grounded_reply_facts(outputs["reply"], outputs.get("job_record"))
-    from halldesk.replies import grounded_reply
+    from unihelp.replies import grounded_reply
     return grounded_reply(outputs["reply"], outputs["reply_sources"], outputs["section_ids"], outputs.get("job_record"))
 
 

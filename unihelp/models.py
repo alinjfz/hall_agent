@@ -79,12 +79,12 @@ def transient_error(exc):
 
 
 def configured_provider():
-    return os.getenv("HALL_PROVIDER", "lmstudio")
+    return os.getenv("UNIHELP_PROVIDER", "lmstudio")
 
 
 def model_id(provider, override=None):
     if provider == "lmstudio":
-        return override or os.getenv("HALL_LM_STUDIO_MODEL") or DEFAULTS[provider]
+        return override or os.getenv("UNIHELP_LM_STUDIO_MODEL") or DEFAULTS[provider]
     return override or DEFAULTS[provider]
 
 
@@ -95,7 +95,7 @@ def setup_issue(provider):
         return None if os.getenv("GOOGLE_CLOUD_PROJECT") else "Set GOOGLE_CLOUD_PROJECT and configure Google ADC."
     if provider == "lmstudio":
         return None
-    return "Set HALL_PROVIDER to lmstudio, openai, or vertex."
+    return "Set UNIHELP_PROVIDER to lmstudio, openai, or vertex."
 
 
 def openai_model(name, *, timeout):
@@ -112,8 +112,8 @@ def local_http_client():
 def lmstudio_model(name, *, timeout=18):
     qwen = name.casefold().startswith("qwen/qwen3")
     return ChatOpenAI(
-        model=name, base_url=os.getenv("HALL_LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1",
-        api_key=os.getenv("HALL_LM_STUDIO_API_KEY") or "lm-studio",
+        model=name, base_url=os.getenv("UNIHELP_LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1",
+        api_key=os.getenv("UNIHELP_LM_STUDIO_API_KEY") or "lm-studio",
         use_responses_api=False, temperature=0, timeout=timeout, max_retries=0, max_tokens=650,
         http_client=local_http_client(),
         extra_body={"chat_template_kwargs": {"enable_thinking": False},
@@ -126,7 +126,7 @@ def embedding_model():
 
     Embeddings are opt-in so the quickstart and tests need no embedding service.
     """
-    name = os.getenv("HALL_EMBEDDING_MODEL")
+    name = os.getenv("UNIHELP_EMBEDDING_MODEL")
     if not name:
         return None, None
     provider = configured_provider()
@@ -141,8 +141,8 @@ def embedding_model():
                 location=os.getenv("GOOGLE_CLOUD_LOCATION", "global")), name
         if provider == "lmstudio":
             return OpenAIEmbeddings(
-                model=name, base_url=os.getenv("HALL_LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1",
-                api_key=os.getenv("HALL_LM_STUDIO_API_KEY") or "lm-studio",
+                model=name, base_url=os.getenv("UNIHELP_LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1",
+                api_key=os.getenv("UNIHELP_LM_STUDIO_API_KEY") or "lm-studio",
                 check_embedding_ctx_length=False, http_client=local_http_client(), max_retries=0, timeout=10), name
         return OpenAIEmbeddings(model=name, max_retries=1, timeout=10), name
     except Exception as exc:
@@ -171,9 +171,9 @@ def triage_model(*, timeout=20):
     provider = configured_provider()
     if issue := setup_issue(provider):
         raise ValueError(issue)
-    name = model_id(provider, os.getenv("HALL_MODEL"))
+    name = model_id(provider, os.getenv("UNIHELP_MODEL"))
     if provider == "lmstudio":
-        fallback = os.getenv("HALL_FALLBACK_MODEL")
+        fallback = os.getenv("UNIHELP_FALLBACK_MODEL")
         if fallback and fallback != name:
             return lmstudio_model(name, timeout=timeout / 2), lmstudio_model(fallback, timeout=timeout / 2)
         return lmstudio_model(name, timeout=timeout)

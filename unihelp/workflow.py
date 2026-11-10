@@ -8,13 +8,13 @@ from langgraph.types import Command
 from langsmith import traceable, tracing_context
 from langsmith.utils import tracing_is_enabled
 
-from halldesk.context import search_rules
-from halldesk.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, retrieve_context, revision_thread
-from halldesk.models import triage_model
-from halldesk.policy import build_proposal
-from halldesk.proposals import parse_proposal
-from halldesk.store import ReviewError
-from halldesk.tracing import trace_client
+from unihelp.context import search_rules
+from unihelp.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, retrieve_context, revision_thread
+from unihelp.models import triage_model
+from unihelp.policy import build_proposal
+from unihelp.proposals import parse_proposal
+from unihelp.store import ReviewError
+from unihelp.tracing import trace_client
 
 
 def process_pending(store):

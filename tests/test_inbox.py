@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
-from halldesk import models, workflow
-from halldesk.store import LONDON, Store
+from unihelp import models, workflow
+from unihelp.store import LONDON, Store
 from tests.scripted_model import scripted, wait_for_triage
 
 
@@ -54,8 +54,8 @@ def test_inbox_review_and_job_lifecycle():
             return original_triage(store, report_id, model=responses.pop(0), **kwargs)
 
         with patch.dict("os.environ", {
-            "HALL_DB": str(db), "LANGSMITH_TRACING": "false", "HALL_PROVIDER": "openai",
-            "HALL_ENABLE_QUALITY_CHECKS": "true",
+            "UNIHELP_DB": str(db), "LANGSMITH_TRACING": "false", "UNIHELP_PROVIDER": "openai",
+            "UNIHELP_ENABLE_QUALITY_CHECKS": "true",
         }), \
              patch.object(models, "setup_issue", return_value=None), \
              patch.object(workflow, "triage", side_effect=scripted_triage) as model:
@@ -134,7 +134,7 @@ def test_inbox_review_and_job_lifecycle():
             assert store.eval_cases("holdout")[0]["expected"]["kind"] == "lighting_question"
 
             ui.button_group(key="workspace").set_value("Reports").run(timeout=30)
-            with patch.dict("os.environ", {"HALL_BACKGROUND_WORKER": "true"}):
+            with patch.dict("os.environ", {"UNIHELP_BACKGROUND_WORKER": "true"}):
                 similar_id = store.add_report("Flat 1", "Another ceiling light", "The ceiling light has stopped working.")
                 original = store.report(2)["proposal"]
                 store.save_proposal(store.report(similar_id), {

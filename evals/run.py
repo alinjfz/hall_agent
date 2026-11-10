@@ -25,10 +25,10 @@ from langsmith import Client, trace, tracing_context
 from langsmith.schemas import Example
 
 from evals import evaluators
-from halldesk.models import configured_provider, model_id, setup_issue
-from halldesk.safety import safety_signals
-from halldesk.store import Store
-from halldesk.workflow import triage
+from unihelp.models import configured_provider, model_id, setup_issue
+from unihelp.safety import safety_signals
+from unihelp.store import Store
+from unihelp.workflow import triage
 
 HERE = Path(__file__).resolve().parent
 DATASET_NAMES = {"triage": "unihelp-triage-v3", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
@@ -310,16 +310,16 @@ def main():
     if not legacy and args.passes != "single":
         parser.error("The production graph uses one structured interpretation.")
     if args.agent:
-        os.environ["HALL_PROVIDER"] = args.agent
+        os.environ["UNIHELP_PROVIDER"] = args.agent
     if args.model:
-        os.environ["HALL_MODEL"] = args.model
+        os.environ["UNIHELP_MODEL"] = args.model
     provider = configured_provider()
     supports_deadlines = "deadlines" in inspect.signature(triage).parameters
     if args.deadlines and (not supports_deadlines or min(args.deadlines) <= 0):
         parser.error("--deadlines requires the current graph and three positive budgets.")
     deadlines = None
     if supports_deadlines:
-        from halldesk.graph import ModelDeadlines
+        from unihelp.graph import ModelDeadlines
 
         budgets = args.deadlines or ((60, 45, 45) if provider == "vertex" else ())
         deadlines = ModelDeadlines(*budgets)
@@ -361,7 +361,7 @@ def main():
         os.environ["LANGCHAIN_TRACING_V2"] = "false"
     client = Client() if hosted else local_trace_client()
     examples, version = examples_for(client, args.suite, cases, hosted, sync=not args.case)
-    agent = model_id(provider, os.getenv("HALL_MODEL"))
+    agent = model_id(provider, os.getenv("UNIHELP_MODEL"))
     fingerprint = sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest()
     if args.sync_only:
         print(f"{DATASET_NAMES[args.suite]}: {len(examples)} cases, version {version}, sha256 {fingerprint}")
@@ -497,7 +497,7 @@ def main():
                "slices": slices, "safety": safety, "safety_by_case": safety_by_case,
                "retrieval_recall_at_3": mean(recalls) if recalls else None,
                "retrieval_hit_at_1": mean(hits) if hits else None,
-               "embedding_model": os.getenv("HALL_EMBEDDING_MODEL") or None,
+               "embedding_model": os.getenv("UNIHELP_EMBEDDING_MODEL") or None,
                "retrieval_recall_at_3_by_origin": {origin: {"mean": mean(scores), "trials": len(scores)}
                                                    for origin, scores in sorted(recall_by_origin.items())},
                "results": rows}

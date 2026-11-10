@@ -6,9 +6,9 @@ from zoneinfo import ZoneInfo
 
 from langsmith import traceable
 
-from halldesk.evidence import quoted_in
-from halldesk.safety import safety_signals
-from halldesk.store import LABELS, is_overdue
+from unihelp.evidence import quoted_in
+from unihelp.safety import safety_signals
+from unihelp.store import LABELS, is_overdue
 
 
 def manual(reason):

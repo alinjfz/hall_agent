@@ -5,7 +5,7 @@ from pathlib import Path
 
 from langsmith import traceable
 
-from halldesk.retrieval import BM25, tokenize
+from unihelp.retrieval import BM25, tokenize
 
 
 REPAIR_CATEGORIES = ("lighting", "heating", "appliance", "plumbing")
@@ -48,7 +48,7 @@ def same_policy(current, proposed):
 @traceable(name="retrieve_policy")
 def retrieve_policy():
     """Retrieve the approved policy sections for the supported workflow."""
-    path = Path(os.getenv("HALL_POLICY_FILE") or Path(__file__).with_name("rules.json"))
+    path = Path(os.getenv("UNIHELP_POLICY_FILE") or Path(__file__).with_name("rules.json"))
     try:
         rules = json.loads(path.read_text(encoding="utf-8"))
         required = ("id", "source", "summary")

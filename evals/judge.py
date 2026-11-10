@@ -6,7 +6,7 @@ import os
 from langsmith import traceable
 from pydantic import BaseModel, Field
 
-from halldesk.models import configured_provider, lmstudio_model, model_id
+from unihelp.models import configured_provider, lmstudio_model, model_id
 
 
 RUBRICS = {
@@ -24,9 +24,9 @@ class Verdict(BaseModel):
 
 
 def judge_model_id():
-    name = os.getenv("HALL_JUDGE_MODEL") or "google/gemma-4-e4b"
-    if configured_provider() == "lmstudio" and name == model_id("lmstudio", os.getenv("HALL_MODEL")):
-        raise ValueError("Set HALL_JUDGE_MODEL to a different LM Studio model from the triage model.")
+    name = os.getenv("UNIHELP_JUDGE_MODEL") or "google/gemma-4-e4b"
+    if configured_provider() == "lmstudio" and name == model_id("lmstudio", os.getenv("UNIHELP_MODEL")):
+        raise ValueError("Set UNIHELP_JUDGE_MODEL to a different LM Studio model from the triage model.")
     return name
 
 

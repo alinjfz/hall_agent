@@ -4,7 +4,7 @@ import json
 
 from langchain_core.tools import tool
 
-from halldesk.retrieval import search_handbook
+from unihelp.retrieval import search_handbook
 
 
 @tool

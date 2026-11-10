@@ -10,14 +10,14 @@ from streamlit.testing.v1 import AppTest
 from tests.scripted_model import scripted, wait_for_triage
 
 
-from halldesk import models, workflow
-from halldesk.store import Store
+from unihelp import models, workflow
+from unihelp.store import Store
 
 def test_chase_review_and_replay(monkeypatch):
     with TemporaryDirectory() as d:
         db = Path(d) / "demo.sqlite3"
-        monkeypatch.setenv("HALL_DB", str(db))
-        monkeypatch.setenv("HALL_PROVIDER", "openai")
+        monkeypatch.setenv("UNIHELP_DB", str(db))
+        monkeypatch.setenv("UNIHELP_PROVIDER", "openai")
         store = Store(db)
         store.seed()
         with store.transaction(write=True) as conn:

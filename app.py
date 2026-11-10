@@ -10,19 +10,19 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-from halldesk.context import REPAIR_CATEGORIES, retrieve_policy
-from halldesk.proposals import parse_proposal
-from halldesk.models import configured_provider, model_id, setup_issue
-from halldesk.store import HANDOFFS, LABELS, LONDON, RESIDENCE, ReviewError, Store, is_overdue
-from halldesk.workflow import process_pending, review, review_reply, revise
+from unihelp.context import REPAIR_CATEGORIES, retrieve_policy
+from unihelp.proposals import parse_proposal
+from unihelp.models import configured_provider, model_id, setup_issue
+from unihelp.store import HANDOFFS, LABELS, LONDON, RESIDENCE, ReviewError, Store, is_overdue
+from unihelp.workflow import process_pending, review, review_reply, revise
 
 load_dotenv()
 st.set_page_config(page_title="UniHelp", page_icon=":material/mail:", layout="wide")
-st.html(Path(__file__).with_name("halldesk") / "mail.css")
-store = Store(os.getenv("HALL_DB", "halldesk.sqlite3"))
-store.seed(samples=os.getenv("HALL_SEED_SAMPLE", "").lower() == "true")
-background_worker = os.getenv("HALL_BACKGROUND_WORKER", "").lower() == "true"
-quality_checks_enabled = os.getenv("HALL_ENABLE_QUALITY_CHECKS", "").lower() == "true"
+st.html(Path(__file__).with_name("unihelp") / "mail.css")
+store = Store(os.getenv("UNIHELP_DB", "unihelp.sqlite3"))
+store.seed(samples=os.getenv("UNIHELP_SEED_SAMPLE", "").lower() == "true")
+background_worker = os.getenv("UNIHELP_BACKGROUND_WORKER", "").lower() == "true"
+quality_checks_enabled = os.getenv("UNIHELP_ENABLE_QUALITY_CHECKS", "").lower() == "true"
 
 FOLDERS = ("Inbox", "Queued", "Needs review", "Handled", "Failed")
 QUEUE_STATUSES = {"Queued", "Triaging"}

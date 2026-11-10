@@ -1,10 +1,10 @@
 """Apply a staff clarification or edit without writing any jobs."""
 from datetime import date
 
-from halldesk.context import retrieve_policy, same_policy, search_rules
-from halldesk.policy import chase_proposal, manual, repair_proposal, urgent_proposal
-from halldesk.proposals import Proposal
-from halldesk.store import LABELS, LONDON, ReviewError
+from unihelp.context import retrieve_policy, same_policy, search_rules
+from unihelp.policy import chase_proposal, manual, repair_proposal, urgent_proposal
+from unihelp.proposals import Proposal
+from unihelp.store import LABELS, LONDON, ReviewError
 
 
 def revise_proposal(store, report, proposal: Proposal, value):

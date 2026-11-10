@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from halldesk.safety import safety_signals
+from unihelp.safety import safety_signals
 
 
 def safety_examples():

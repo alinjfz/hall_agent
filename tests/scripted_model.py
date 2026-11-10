@@ -5,8 +5,8 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
-from halldesk.replies import ReplyDraft
-from halldesk.safety import SafetyCheck
+from unihelp.replies import ReplyDraft
+from unihelp.safety import SafetyCheck
 
 
 class ScriptedModel(GenericFakeChatModel):

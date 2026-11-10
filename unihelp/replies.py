@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from halldesk.store import LONDON
+from unihelp.store import LONDON
 
 
 class ReplyDraft(BaseModel):
