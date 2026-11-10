@@ -24,6 +24,9 @@ def test_intake_safety_examples(message, hazard):
     ("What should I do if I smell gas right now?", {"gas"}),
     ("A manual says 'exposed wires' as a warning, and there are exposed wires in my room.",
      {"building_hazard"}),
+    ("The emergency exit sign in the lobby no longer illuminates.", {"fire_equipment"}),
+    ("The carbon monoxide detector is screaming.", {"gas"}),
+    ("Plaster from the ceiling is dropping chunks onto the landing.", {"building_hazard"}),
 ])
 def test_reference_does_not_hide_a_current_hazard(message, signals):
     assert safety_signals(message) == signals

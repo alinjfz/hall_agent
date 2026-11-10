@@ -1,13 +1,20 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Interpretation(BaseModel):
+    # Keep defaults for saved interpretations and scripted callers. Live providers
+    # must explicitly supply the facts that determine routing, including nulls.
+    model_config = ConfigDict(json_schema_extra={"required": [
+        "intent", "evidence", "category", "fitting", "other_lighting_works", "lighting_evidence",
+        "leak_contained", "power_scope", "can_access_now",
+    ]})
+
     intent: Literal["chase", "new", "access", "multiple", "question", "manual"]
     issues: Annotated[list[str], Field(min_length=2, max_length=4)] | None = None
     candidate_ids: list[int] = []
-    evidence: str = ""
+    evidence: str = Field(default="", description="One exact, contiguous quote supporting the intent and fitting.")
     category: Literal["lighting", "heating", "appliance", "plumbing", "lockout", "spare_key"] | None = None
     fitting: str | None = None
     other_lighting_works: bool | None = None

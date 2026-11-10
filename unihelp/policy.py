@@ -127,7 +127,7 @@ def apply_policy(report, interpretation, jobs, policies, now, job_reports=None, 
         return manual("The interpretation lacks verified evidence from the report.")
     if interpretation.intent == "new":
         return handle_repair(report, interpretation, jobs, policies, now, job_reports)
-    return handle_chase(interpretation, jobs, policies, now)
+    return handle_chase(interpretation, jobs, policies, now, message)
 
 
 def handle_multiple(report, interpretation, policies):
@@ -165,10 +165,24 @@ def handle_access(report, interpretation, jobs, policies):
     if has_access is False and evidence.strip():
         return urgent_proposal(report, policies, jobs, {"lockout"}, evidence=evidence)
     rule = policies.get("access")
-    if rule and interpretation.category == "lockout" and has_access is not True:
+    key_loss = re.search(r"\b(?:lost|missing|can't find|cannot find)\b[^.!?;]{0,35}\b(?:key|fob|keycard)\b"
+                         r"|\b(?:key|fob|keycard)\b[^.!?;]{0,25}\b(?:lost|missing)\b",
+                         evidence, re.I)
+    if rule and has_access is not True and (interpretation.category == "lockout" or key_loss):
         return {"kind": "access_question", "question": "Can the resident get into their room or flat now?", "rule": rule}
     proposal = manual("Refer this access request to residence staff for identity and access checks.")
     if rule:
+        proposal["rule"] = rule
+    return proposal
+
+
+def duplicate_proposal(jobs, policies, evidence):
+    proposal = manual("An open job already covers this fitting.") | {
+        "duplicate_job_ids": [job["id"] for job in jobs], "related_jobs": jobs,
+        "evidence": evidence,
+        "reply": "There is already an open repair for this fitting. Residence staff can review your report alongside it.",
+    }
+    if rule := policies.get("duplicate"):
         proposal["rule"] = rule
     return proposal
 
@@ -182,16 +196,9 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
     fitting = (interpretation.fitting or "").strip()
     if not fitting or fitting.casefold() not in evidence.casefold():
         return manual("The affected fitting could not be verified.")
-    duplicate_jobs = [job["id"] for job in jobs if job["fitting"].casefold() == fitting.casefold()]
+    duplicate_jobs = [job for job in jobs if job["fitting"].casefold() == fitting.casefold()]
     if duplicate_jobs:
-        proposal = manual("An open job already covers this fitting.") | {
-            "duplicate_job_ids": duplicate_jobs, "related_jobs": [job for job in jobs if job["id"] in duplicate_jobs],
-            "evidence": message,
-            "reply": "There is already an open repair for this fitting. Residence staff can review your report alongside it.",
-        }
-        if duplicate_rule := policies.get("duplicate"):
-            proposal["rule"] = duplicate_rule
-        return proposal
+        return duplicate_proposal(duplicate_jobs, policies, message)
     possible_duplicates = [
         {"job_id": job["id"], "fitting": job["fitting"], **job_reports[job["id"]]}
         for job in jobs
@@ -229,7 +236,7 @@ def identifies_fitting(evidence, fitting):
     return False
 
 
-def handle_chase(interpretation, jobs, policies, now):
+def handle_chase(interpretation, jobs, policies, now, message):
     evidence = interpretation.evidence
     rule = policies.get("escalation")
     candidates = [job for job in jobs if job["id"] in interpretation.candidate_ids]
@@ -245,6 +252,11 @@ def handle_chase(interpretation, jobs, policies, now):
     job = candidates[0]
     if not identifies_fitting(evidence, job["fitting"]):
         return manual("The report evidence does not identify the selected fitting.")
+    if re.search(r"\b(?:stopped working|won't (?:start|work)|has (?:broken|failed)|went out)\b", evidence, re.I) and not re.search(
+        r"\b(?:chase|chasing|update|status|progress|assign\w*|reported|again|follow[ -]?up|job|work order|"
+        r"still (?:waiting|broken|out|not working))\b", message, re.I
+    ):
+        return duplicate_proposal([job], policies, message)
     return chase_proposal(job, rule, evidence, now, policies.get("follow_up"))
 
 

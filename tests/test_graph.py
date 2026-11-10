@@ -11,6 +11,38 @@ from unihelp.store import ReviewError, Store
 from unihelp.workflow import review, triage
 
 
+def test_private_lighting_fault_is_not_a_dark_shared_route(tmp_path):
+    from tests.scripted_model import scripted
+
+    message = "My fixed ceiling light broke. There is no other lighting in the bedroom."
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 5 bedroom", "Lighting", message)
+    model = scripted("Flat 5 bedroom", "lighting", {
+        "intent": "new", "fitting": "fixed ceiling light", "evidence": "My fixed ceiling light broke.",
+        "other_lighting_works": False, "lighting_evidence": "There is no other lighting in the bedroom.",
+    }, safety={"hazard": "dark_route", "evidence": "There is no other lighting in the bedroom.",
+               "assessment": "current"})
+
+    proposal = triage(store, report_id, model=model)
+    assert proposal["kind"] == "create" and proposal["priority"] == "P2"
+    assert "urgency" not in proposal
+
+
+def test_lost_key_with_unknown_access_prompts_for_clarification(tmp_path):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    message = "I lost my key. Can reception help?"
+    report_id = store.add_report("Flat 5", "Access", message)
+    model = scripted("Flat 5", "access", {
+        "intent": "access", "category": "spare_key", "evidence": "I lost my key.",
+    })
+
+    assert triage(store, report_id, model=model)["kind"] == "access_question"
+
+
 def test_emergency_is_ready_at_intake_and_records_only_one_reply(tmp_path):
     store = Store(tmp_path / "workspace.sqlite3")
     store.seed(samples=False)

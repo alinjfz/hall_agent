@@ -34,7 +34,7 @@ from unihelp.proposals import parse_proposal
 from unihelp.replies import ReplyDraft, grounded_reply
 from unihelp.review_policy import revise_proposal
 from unihelp.retrieval import search_handbook
-from unihelp.safety import SafetyCheck, safety_signals
+from unihelp.safety import SafetyCheck, private_lighting_fault, safety_signals
 from unihelp.store import ReviewError, Store
 from unihelp.tools import search_policy
 
@@ -248,12 +248,13 @@ def build_graph():
         return {"proposal": dump_proposal(proposal)}
 
     def check_safety(state: State, runtime: Runtime[Context]):
-        message = state["report"]["message"]
+        report = state["report"]
+        message = report["message"]
         try:
             deadline = time() + (runtime.context or Context()).deadlines.safety
             result = invoke_structured(model_for_run(runtime), deadline, SafetyCheck, [
                 SystemMessage(SAFETY_PROMPT),
-                HumanMessage(json.dumps({"resident_report": message}, ensure_ascii=False)),
+                HumanMessage(json.dumps({"location": report["location"], "resident_report": message}, ensure_ascii=False)),
             ])
             check = SafetyCheck.model_validate(result)
         except Exception as exc:
@@ -263,6 +264,8 @@ def build_graph():
             return {"safety_review": [], "safety_evidence": None}
         if (check.hazard and check.assessment in (None, "current")
                 and check.evidence and check.evidence.strip() and check.evidence in message):
+            if check.hazard == "dark_route" and private_lighting_fault(report["location"], message, check.evidence):
+                return {"safety_review": [], "safety_evidence": None}
             return {"safety_review": [check.hazard], "safety_evidence": check.evidence}
         return {"safety_review": ["unverified_safety"], "safety_evidence": None}
 

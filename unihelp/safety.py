@@ -11,6 +11,15 @@ class SafetyCheck(BaseModel):
     assessment: Literal["current", "not_current", "uncertain"] | None = None
 
 
+def private_lighting_fault(location, message, evidence):
+    return bool(
+        re.search(r"\bflat\s+[\w-]+\b", location, re.I)
+        and not re.search(r"\b(?:shared|communal|stairs?|stairwell|corridor|landing|hallway|exit|escape route)\b",
+                          f"{location} {message}", re.I)
+        and re.search(r"\b(?:no other (?:fixed )?light(?:s|ing)?|only fixed light)\b", evidence, re.I)
+    )
+
+
 # Explicit signals take precedence over routine triage, even without a model.
 SIGNALS = {
     "fire": (
@@ -23,11 +32,13 @@ SIGNALS = {
         r"\b(?:gas leak|smell(?:s|ing)? (?:of )?gas|carbon monoxide (?:leak|poisoning)|"
         r"(?:rotten eggs?|sulphur|sulfur)[^.!?;]{0,45}\b(?:gas (?:hob|meter)|boiler|gas supply)|"
         r"(?:gas (?:hob|meter)|boiler)[^.!?;]{0,45}\b(?:rotten eggs?|sulphur|sulfur)|"
-        r"(?:carbon monoxide|CO) alarm (?:is )?(?:going off|sounding|went off))\b"
+        r"(?:carbon monoxide|CO) (?:alarm|detector|monitor) (?:is )?(?:going off|sounding|went off|screaming)|"
+        r"(?:carbon monoxide|CO) (?:detector|monitor) reads? \d+\s*ppm and (?:hasn't|has not) stopped (?:sounding|screaming))\b"
     ),
     "fire_equipment": (
-        r"\b(?:(?:fire|smoke|carbon monoxide) (?:alarm|detector)|fire door|fire exit|escape route|emergency light)\b"
-        r"[^.!?;]{0,55}\b(?:broken|faulty|chirp\w*|beep\w*|block\w*|wedged|won't|will not|doesn't work|not working)\b"
+        r"\b(?:(?:fire|smoke|carbon monoxide) (?:alarm|detector)|fire door|fire exit|escape route|emergency light|emergency exit sign)\b"
+        r"[^.!?;]{0,55}\b(?:broken|faulty|chirp\w*|beep\w*|block\w*|wedged|won't|will not|doesn't work|not working|"
+        r"no longer illuminat\w*)\b"
         r"|\b(?:blocked|obstructed) (?:fire exit|escape route)\b"
     ),
     "building_hazard": (
@@ -35,7 +46,8 @@ SIGNALS = {
         r"(?:total|complete) power (?:loss|outage|failure)|"
         r"no power (?:anywhere|in (?:the|our|my) (?:whole |entire )?(?:flat|building))|"
         r"sparks?(?![ -]+plug\b)|sparking|(?:outlet|socket|plug)[^.!?;]{0,45}(?:glow\w*|melt\w*)|burning (?:smell|odor|odour)|smell(?:s)? (?:of )?burning|exposed wires?|electric shock|"
-        r"ceiling (?:is )?(?:collapsing|caving in)|trapped in (?:a |the )?(?:lift|elevator)|"
+        r"ceiling (?:is )?(?:collapsing|caving in)|(?:ceiling|plaster)[^.!?;]{0,55}\b(?:is )?(?:dropping|shedding) chunks|"
+        r"trapped in (?:a |the )?(?:lift|elevator)|"
         r"water [^.!?;]{0,35}(?:into|onto|through) (?:an? |the )?(?:socket|fuse box|consumer unit|electrical panel)|"
         r"broken glass [^.!?;]{0,25}(?:stairs|corridor|shared hallway))\b"
     ),

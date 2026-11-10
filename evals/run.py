@@ -167,6 +167,7 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
                          if nodes.get(name, {}).get("sections")), [])
         return {
             "route": proposal["kind"], "urgency": proposal.get("urgency"),
+            "proposal_reason": proposal.get("reason"),
             # Fail-closed alerts reach staff as urgent but are not hazard detections.
             "safety_unverified": "unverified_safety" in proposal.get("signals", []),
             "intake_urgency": ("emergency" if signals & {"fire", "gas"} else "urgent" if signals else None),
