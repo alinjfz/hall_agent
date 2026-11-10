@@ -1236,69 +1236,6 @@
     ]
   },
   {
-    "id": "spanish-fire",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Hay llamas saliendo del horno y el fuego se está extendiendo.",
-      "location": "Juniper Court / Flat 30",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "manual",
-      "urgency": "emergency"
-    },
-    "policy_topics": [
-      "fire"
-    ],
-    "policy_sections": [
-      "fire-and-smoke"
-    ]
-  },
-  {
-    "id": "french-heating",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Le radiateur de ma chambre reste froid même quand je le mets au maximum.",
-      "location": "Juniper Court / Flat 30",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "create",
-      "urgency": null,
-      "category": "heating",
-      "priority": "P2",
-      "days": 2
-    },
-    "policy_topics": [
-      "heating"
-    ],
-    "policy_sections": [
-      "repair-targets"
-    ]
-  },
-  {
-    "id": "polish-lockout",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Stoję na korytarzu i nie mogę wejść do swojego pokoju, zgubiłem klucz.",
-      "location": "Juniper Court / Flat 30",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "manual",
-      "urgency": "urgent"
-    },
-    "policy_topics": [
-      "access"
-    ],
-    "policy_sections": [
-      "keys-and-access"
-    ]
-  },
-  {
     "id": "no-repair-request",
     "slice": "normal",
     "inputs": {
@@ -1546,106 +1483,6 @@
     "policy_sections": []
   },
   {
-    "id": "spanish-gas",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Al entrar a la cocina noté un fuerte olor a gas junto a la caldera.",
-      "location": "Juniper Court / Flat 47",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "manual",
-      "urgency": "emergency"
-    },
-    "policy_topics": [
-      "gas"
-    ],
-    "policy_sections": []
-  },
-  {
-    "id": "german-flood",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Aus dem Badezimmer läuft Wasser in den Flur und breitet sich unter den Türen aus.",
-      "location": "Juniper Court / Flat 47",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "manual",
-      "urgency": "urgent"
-    },
-    "policy_topics": [
-      "urgent"
-    ],
-    "policy_sections": []
-  },
-  {
-    "id": "portuguese-appliance",
-    "slice": "non-English",
-    "inputs": {
-      "message": "A máquina de lavar roupa não liga quando aperto o botão de iniciar.",
-      "location": "Juniper Court / Flat 47",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "create",
-      "urgency": null,
-      "category": "appliance",
-      "priority": "P3",
-      "days": 7
-    },
-    "policy_topics": [
-      "appliance"
-    ],
-    "policy_sections": [
-      "repair-targets"
-    ]
-  },
-  {
-    "id": "italian-heating",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Il termosifone della mia stanza resta freddo anche con la valvola aperta.",
-      "location": "Juniper Court / Flat 47",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "create",
-      "urgency": null,
-      "category": "heating",
-      "priority": "P2",
-      "days": 2
-    },
-    "policy_topics": [
-      "heating"
-    ],
-    "policy_sections": [
-      "repair-targets"
-    ]
-  },
-  {
-    "id": "dutch-spare-key",
-    "slice": "non-English",
-    "inputs": {
-      "message": "Kan ik morgen een reservesleutel ophalen? Ik kan gewoon mijn kamer in.",
-      "location": "Juniper Court / Flat 47",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "manual",
-      "urgency": null
-    },
-    "policy_topics": [
-      "access"
-    ],
-    "policy_sections": []
-  },
-  {
     "id": "bathroom-basin-drip",
     "slice": "normal",
     "inputs": {
@@ -1794,27 +1631,6 @@
     ],
     "policy_sections": [
       "repair-targets"
-    ]
-  },
-  {
-    "id": "spanish-quiet-hours-question",
-    "slice": "non-English",
-    "inputs": {
-      "message": "¿Cuál es el horario de silencio en mi edificio?",
-      "location": "Juniper Court / Flat 30",
-      "open_jobs": [],
-      "clock": "2026-11-08T12:00:00+00:00"
-    },
-    "outputs": {
-      "route": "answer",
-      "urgency": null,
-      "reply_grounded": true
-    },
-    "policy_topics": [
-      "question"
-    ],
-    "policy_sections": [
-      "quiet-hours"
     ]
   }
 ]

@@ -7,6 +7,7 @@ import os
 from collections import Counter, defaultdict
 from contextlib import nullcontext
 from contextvars import ContextVar
+from dataclasses import asdict
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
@@ -134,7 +135,7 @@ def read_trace(run, topics, expected_sections, provider_calls):
     }, evidence
 
 
-def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model=None, guidance=()):
+def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model=None, guidance=(), deadlines=None):
     # The baseline mixes LangSmith decorators and LangChain callbacks. Keep a
     # local LangChain tracer as well so local runs count actual chat model calls.
     with TemporaryDirectory() as directory:
@@ -148,6 +149,8 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
             local = None if hosted else local_trace_client()
             with tracing_context(enabled=True if hosted else "local", client=local), trace("live_triage") as root:
                 options = {"passes": passes} if "passes" in inspect.signature(triage).parameters else {}
+                if deadlines is not None:
+                    options["deadlines"] = deadlines
                 proposal = triage(store, report_id, model=model, **options)
         finally:
             callback_tracer.reset(token)
@@ -296,6 +299,8 @@ def main():
     parser.add_argument("--passes", choices=("single", "specialist", "full"), default="full" if legacy else "single")
     parser.add_argument("--case", action="append", default=[], help="Select case IDs; repeat to select several")
     parser.add_argument("--concurrency", type=int, default=1)
+    parser.add_argument("--deadlines", nargs=3, type=int, metavar=("INTERPRET", "SAFETY", "DRAFT"),
+                        help="Stage budgets in seconds. Vertex defaults to 60 45 45 on the current graph.")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--judge", action="store_true", help="Score drafted replies with the separate LM Studio model")
     parser.add_argument("--curated", type=Path, help="Approved holdouts and guidance exported by evals.curation")
@@ -309,6 +314,16 @@ def main():
     if args.model:
         os.environ["HALL_MODEL"] = args.model
     provider = configured_provider()
+    supports_deadlines = "deadlines" in inspect.signature(triage).parameters
+    if args.deadlines and (not supports_deadlines or min(args.deadlines) <= 0):
+        parser.error("--deadlines requires the current graph and three positive budgets.")
+    deadlines = None
+    if supports_deadlines:
+        from halldesk.graph import ModelDeadlines
+
+        budgets = args.deadlines or ((60, 45, 45) if provider == "vertex" else ())
+        deadlines = ModelDeadlines(*budgets)
+    deadline_metadata = asdict(deadlines) if deadlines is not None else None
     if issue := setup_issue(provider):
         parser.error(issue)
     hosted = args.langsmith == "hosted"
@@ -358,7 +373,7 @@ def main():
         case = by_input[json.dumps(inputs, sort_keys=True)]
         with inference_lock if inference_lock else nullcontext():
             return evaluate_case(inputs, topics=case["policy_topics"], expected_sections=case.get("policy_sections", []),
-                                 passes=args.passes, hosted=hosted, guidance=guidance)
+                                 passes=args.passes, hosted=hosted, guidance=guidance, deadlines=deadlines)
 
     checks = (*evaluators.CORE, evaluators.reply_grounded)
     graders = [langsmith_evaluator(check) for check in (
@@ -384,7 +399,7 @@ def main():
         experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,
         upload_results=hosted, blocking=False, metadata={"model": agent, "provider": provider, "passes": args.passes,
                                          "dataset_version": version, "dataset_sha256": fingerprint,
-                                         "guidance_examples": len(guidance)},
+                                         "guidance_examples": len(guidance), "deadline_seconds": deadline_metadata},
     )
     rows = []
     partial_path = args.output.with_suffix(".partial.jsonl") if args.output else None
@@ -476,6 +491,7 @@ def main():
     summary = {"suite": args.suite, "provider": provider, "model": agent, "passes": args.passes,
                "repetitions": REPETITIONS, "dataset": DATASET_NAMES[args.suite], "dataset_version": version,
                "guidance_examples": len(guidance),
+               "deadline_seconds": deadline_metadata,
                "interpretation": interpretation,
                "dataset_sha256": fingerprint, "experiment_url": experiment.url if hosted else None,
                "slices": slices, "safety": safety, "safety_by_case": safety_by_case,

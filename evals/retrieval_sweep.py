@@ -52,9 +52,7 @@ def score(cases, mode, search):
 
 
 def sweep(hybrid=False, thresholds=None):
-    english = [case for case in CASES if case["slice"] != "non-English"
-               and (case.get("policy_sections") or "question" in case["policy_topics"])]
-    other = [case for case in CASES if case["slice"] == "non-English" and case.get("policy_sections")]
+    cases = [case for case in CASES if case.get("policy_sections") or "question" in case["policy_topics"]]
     name, default = ("MIN_SIMILARITY", retrieval.MIN_SIMILARITY) if hybrid else ("MIN_SCORE", retrieval.MIN_SCORE)
     rows = []
     try:
@@ -63,10 +61,9 @@ def sweep(hybrid=False, thresholds=None):
             retriever = retrieval.handbook_retriever()
             if hybrid and retriever.metadata["retrieval_mode"] != "hybrid":
                 raise SystemExit("Set HALL_EMBEDDING_MODEL and start the embedding service for --hybrid.")
-            for label, cases in (("english", english), ("non-English", other)):
-                for mode in ("message", "facts"):
-                    rows.append({name.lower(): threshold, "slice": label, "query": mode,
-                                 **score(cases, mode, retriever.invoke)})
+            for mode in ("message", "facts"):
+                rows.append({name.lower(): threshold, "slice": "english", "query": mode,
+                             **score(cases, mode, retriever.invoke)})
     finally:
         setattr(retrieval, name, default)
     return rows

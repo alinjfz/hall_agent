@@ -171,7 +171,7 @@ def test_live_dataset_contract():
     cases = load_cases("triage")
     counts = Counter(case["slice"] for case in cases)
     assert counts == {"hazard": 22, "edge": 12, "normal": 13, "ambiguous": 10,
-                      "adversarial": 8, "non-English": 9}
+                      "adversarial": 8}
     holdout = load_cases("safety")
     assert len({case["id"] for case in [*cases, *holdout]}) == len(cases) + len(holdout)
     assert len({case["inputs"]["message"] for case in holdout} &

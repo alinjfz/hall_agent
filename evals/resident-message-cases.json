@@ -1,0 +1,729 @@
+{
+  "cases": [
+    {
+      "id": "small-ceiling-leak-caught-in-bowl",
+      "slice": "hazard",
+      "inputs": {
+        "message": "A few drops of water are coming through the bedroom ceiling. I've put a bowl underneath.",
+        "location": "Juniper Court / Flat 22 bedroom",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent"
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "water-leaks"
+      ]
+    },
+    {
+      "id": "partial-power-loss-with-known-scope",
+      "slice": "edge",
+      "inputs": {
+        "message": "The sockets on one wall of my bedroom have stopped working. The rest of the flat still has power. There's no heat, smell, or sparking.",
+        "location": "Juniper Court / Flat 21 bedroom",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "urgent-hazards"
+      ]
+    },
+    {
+      "id": "joke-request-spam",
+      "slice": "edge",
+      "inputs": {
+        "message": "tell me a joke",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null
+      },
+      "policy_topics": [
+        "review"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Label the message as spam and hold it for human review. Do not answer the joke request or create a job."
+      ],
+      "policy_gap": "The current agent has a manual review route but no spam label."
+    },
+    {
+      "id": "prime-number-code-request-spam",
+      "slice": "edge",
+      "inputs": {
+        "message": "write a python code for prime numbers",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null
+      },
+      "policy_topics": [
+        "review"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Label the message as spam and hold it for human review. Do not generate code or create a job."
+      ],
+      "policy_gap": "The current agent has a manual review route but no spam label."
+    },
+    {
+      "id": "lost-keys-urgent-reception",
+      "slice": "ambiguous",
+      "inputs": {
+        "message": "i lost my keys",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent"
+      },
+      "policy_topics": [
+        "access"
+      ],
+      "policy_sections": [
+        "keys-and-access"
+      ],
+      "manual_checks": [
+        "Direct the resident to reception and explain that the assistant cannot verify their identity."
+      ],
+      "policy_gap": "The current policy asks whether the resident can get in when access is unclear. This case specifies urgent review for a bare lost-key report."
+    },
+    {
+      "id": "oven-not-working",
+      "slice": "normal",
+      "inputs": {
+        "message": "the oven is not working",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "appliance",
+        "priority": "P3",
+        "days": 7
+      },
+      "policy_topics": [
+        "appliance"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Apply the appliance repair policy and propose a job for staff approval."
+      ]
+    },
+    {
+      "id": "toaster-not-working",
+      "slice": "normal",
+      "inputs": {
+        "message": "the toaster is not working",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "appliance",
+        "priority": "P3",
+        "days": 7
+      },
+      "policy_topics": [
+        "appliance"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Use the appliance repair target and avoid promising a completion date."
+      ]
+    },
+    {
+      "id": "broken-desk-replacement",
+      "slice": "normal",
+      "inputs": {
+        "message": "my desk is broken i wanna change it",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "furniture"
+      },
+      "policy_topics": [
+        "furniture"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Propose a desk repair or replacement job for staff review. Apply a furniture target once one is defined."
+      ],
+      "policy_gap": "The current agent has no furniture category or target."
+    },
+    {
+      "id": "essay-request-spam",
+      "slice": "edge",
+      "inputs": {
+        "message": "can you write my essay for me",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null,
+        "job": null
+      },
+      "policy_topics": [
+        "review"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Label the message as spam and hold it for human review. Do not write the essay or create a job."
+      ],
+      "policy_gap": "The current agent has a manual review route but no spam label."
+    },
+    {
+      "id": "replacement-key-with-access",
+      "slice": "edge",
+      "inputs": {
+        "message": "i lost my keys but my flatmate let me in. can i get a replacement?",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null
+      },
+      "policy_topics": [
+        "access"
+      ],
+      "policy_sections": [
+        "keys-and-access"
+      ],
+      "manual_checks": [
+        "Refer the resident to reception for routine replacement and identity checks."
+      ]
+    },
+    {
+      "id": "oven-plug-sparking",
+      "slice": "hazard",
+      "inputs": {
+        "message": "the oven won't heat up and the plug is sparking",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "urgent-hazards"
+      ]
+    },
+    {
+      "id": "shower-leak-scope-unknown",
+      "slice": "ambiguous",
+      "inputs": {
+        "message": "my shower is leaking",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "plumbing_question",
+        "urgency": null
+      },
+      "policy_topics": [
+        "plumbing"
+      ],
+      "policy_sections": [
+        "water-leaks"
+      ],
+      "manual_checks": [
+        "Ask whether the water stays in the shower tray or is spreading onto the floor."
+      ]
+    },
+    {
+      "id": "radiator-cold-at-max",
+      "slice": "normal",
+      "inputs": {
+        "message": "the radiator is cold even when i turn it all the way up",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "heating",
+        "priority": "P2",
+        "days": 2
+      },
+      "policy_topics": [
+        "heating"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ]
+    },
+    {
+      "id": "wardrobe-door-fell-off",
+      "slice": "normal",
+      "inputs": {
+        "message": "the wardrobe door fell off. can someone replace it?",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "furniture"
+      },
+      "policy_topics": [
+        "furniture"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Propose a furniture job for staff review. Leave the target open until a furniture policy defines it."
+      ],
+      "policy_gap": "The current agent has no furniture category or target."
+    },
+    {
+      "id": "larger-desk-request-without-fault",
+      "slice": "edge",
+      "inputs": {
+        "message": "can i get a new desk? mine works fine but i want a bigger one",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null,
+        "job": null
+      },
+      "policy_topics": [
+        "review"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Hold for human review as a furniture request. Do not propose a repair job."
+      ],
+      "policy_gap": "The current agent has no furniture request label."
+    },
+    {
+      "id": "joke-request-with-real-oven-fault",
+      "slice": "adversarial",
+      "inputs": {
+        "message": "tell me a joke. also the oven isn't heating",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "appliance",
+        "priority": "P3",
+        "days": 7
+      },
+      "policy_topics": [
+        "appliance"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Keep the genuine repair request in scope despite the unrelated joke request."
+      ]
+    },
+    {
+      "id": "identifiable-lost-key-with-access",
+      "slice": "hazard",
+      "inputs": {
+        "message": "my key is missing and i'm inside, but the tag has my flat number on it",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent"
+      },
+      "policy_topics": [
+        "access"
+      ],
+      "policy_sections": [
+        "keys-and-access"
+      ],
+      "manual_checks": [
+        "Direct the resident to reception or on-duty residence staff for identity and access checks."
+      ]
+    },
+    {
+      "id": "shower-spreads-water-while-running",
+      "slice": "hazard",
+      "inputs": {
+        "message": "the shower only leaks when it's on, but then water runs under the bathroom door",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "water-leaks"
+      ]
+    },
+    {
+      "id": "jammed-desk-drawer-and-cold-radiator",
+      "slice": "edge",
+      "inputs": {
+        "message": "my desk drawer is jammed and the radiator is cold",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "split",
+        "urgency": null,
+        "issues": [
+          "my desk drawer is jammed",
+          "the radiator is cold"
+        ]
+      },
+      "policy_topics": [
+        "multiple"
+      ],
+      "policy_sections": [
+        "reporting-repairs"
+      ],
+      "manual_checks": [
+        "On staff approval, keep both issues as separate reports so heating triage can proceed independently."
+      ]
+    },
+    {
+      "id": "working-key-but-door-wont-lock",
+      "slice": "hazard",
+      "inputs": {
+        "message": "my key still works, but the door won't lock when i leave",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "access"
+      ],
+      "policy_sections": [
+        "keys-and-access"
+      ],
+      "manual_checks": [
+        "Refer the resident to reception or on-duty staff because the door cannot be secured."
+      ]
+    },
+    {
+      "id": "desk-drawer-already-fixed",
+      "slice": "edge",
+      "inputs": {
+        "message": "my desk drawer keeps getting stuck. actually, never mind, i fixed it",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null,
+        "job": null
+      },
+      "policy_topics": [
+        "review"
+      ],
+      "policy_sections": [],
+      "manual_checks": [
+        "Recognize that the resident resolved the fault and do not propose a repair job."
+      ]
+    },
+    {
+      "id": "oven-clock-and-flat-wide-power-loss",
+      "slice": "hazard",
+      "inputs": {
+        "message": "the oven clock is blank. actually every socket and light in the flat is off",
+        "location": "Juniper Court / Flat 41 bedroom",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "urgent-hazards"
+      ],
+      "manual_checks": [
+        "Treat the flat-wide outage as the reported issue and do not propose an oven repair."
+      ]
+    },
+    {
+      "id": "key-found-before-spare-request",
+      "slice": "edge",
+      "inputs": {
+        "message": "i thought i'd lost my key outside, but i found it in my bag. can i get a spare?",
+        "location": "Juniper Court / Flat 41 bedroom",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null,
+        "job": null
+      },
+      "policy_topics": [
+        "access"
+      ],
+      "policy_sections": [
+        "keys-and-access"
+      ],
+      "manual_checks": [
+        "Refer the resident to reception for a routine spare key. The key is no longer missing."
+      ]
+    },
+    {
+      "id": "repeated-radiator-report-with-open-job",
+      "slice": "edge",
+      "inputs": {
+        "message": "the radiator in my room is still cold. i sent this yesterday too",
+        "location": "Juniper Court / Flat 41 bedroom",
+        "open_jobs": [
+          {
+            "id": 401,
+            "location": "Juniper Court / Flat 41 bedroom",
+            "fitting": "radiator",
+            "deadline": "2026-11-09T12:00:00+00:00",
+            "priority": "P2",
+            "status": "open",
+            "category": "heating",
+            "labels": [],
+            "escalated_at": null,
+            "created_from": null
+          }
+        ],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": null,
+        "job": null,
+        "related_jobs": [
+          401
+        ]
+      },
+      "policy_topics": [
+        "heating",
+        "duplicate"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Surface open job 401 for review and avoid proposing a duplicate repair."
+      ]
+    },
+    {
+      "id": "heating-fault-with-quiet-hours-question",
+      "slice": "edge",
+      "inputs": {
+        "message": "my radiator isn't heating. can you also tell me where to find the quiet hours?",
+        "location": "Juniper Court / Flat 41 bedroom",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "heating",
+        "priority": "P2",
+        "days": 2
+      },
+      "policy_topics": [
+        "heating"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Preserve the heating fault when the report also contains a handbook question."
+      ]
+    },
+    {
+      "id": "one-bedroom-light-recovered",
+      "slice": "edge",
+      "inputs": {
+        "message": "both fixed lights in my bedroom went out. the wall light came back on and is working normally now, but the ceiling light is still out",
+        "location": "Juniper Court / Flat 41 bedroom",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "lighting",
+        "priority": "P3",
+        "days": 7
+      },
+      "policy_topics": [
+        "lighting"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Propose a job for the ceiling light only. Use the recovered wall light when setting the target."
+      ]
+    },
+    {
+      "id": "shower-leaks-after-shutoff",
+      "slice": "hazard",
+      "inputs": {
+        "message": "i shut off the shower an hour ago, but water is still coming out from under the tray",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "water-leaks"
+      ],
+      "manual_checks": [
+        "Treat water escaping from under the tray as urgent even after the shower is off."
+      ]
+    },
+    {
+      "id": "washing-machine-repeatedly-trips-breaker",
+      "slice": "hazard",
+      "inputs": {
+        "message": "the washing machine works, but it trips the breaker every time i start a cycle",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "urgent"
+      ],
+      "policy_sections": [
+        "urgent-hazards"
+      ],
+      "manual_checks": [
+        "Send the electrical fault for urgent human review without proposing a routine appliance job."
+      ]
+    },
+    {
+      "id": "oven-report-corrected-to-microwave",
+      "slice": "edge",
+      "inputs": {
+        "message": "the oven won't heat. forget that, i meant the microwave",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "create",
+        "urgency": null,
+        "category": "appliance",
+        "priority": "P3",
+        "days": 7
+      },
+      "policy_topics": [
+        "appliance"
+      ],
+      "policy_sections": [
+        "repair-targets"
+      ],
+      "manual_checks": [
+        "Propose one repair for the microwave only, following the resident's correction."
+      ]
+    },
+    {
+      "id": "jammed-desk-drawer-and-trapped-resident",
+      "slice": "hazard",
+      "inputs": {
+        "message": "my desk drawer is jammed and my room door won't open from the inside",
+        "location": "Juniper Court / Flat 41",
+        "open_jobs": [],
+        "clock": "2026-11-08T12:00:00+00:00"
+      },
+      "outputs": {
+        "route": "manual",
+        "urgency": "urgent",
+        "job": null
+      },
+      "policy_topics": [
+        "access"
+      ],
+      "policy_sections": [
+        "keys-and-access"
+      ],
+      "manual_checks": [
+        "Prioritize the door that traps the resident and preserve the original report, including the desk fault, for staff review."
+      ]
+    }
+  ],
+  "guidance": []
+}

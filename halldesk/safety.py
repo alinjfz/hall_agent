@@ -8,12 +8,14 @@ class SafetyCheck(BaseModel):
     hazard: Literal["fire", "gas", "fire_equipment", "building_hazard", "dark_route",
                     "unsafe_door", "lockout", "identifiable_key"] | None
     evidence: str | None
+    assessment: Literal["current", "not_current", "uncertain"] | None = None
 
 
 # Explicit signals take precedence over routine triage, even without a model.
 SIGNALS = {
     "fire": (
-        r"\b(?:on fire|flames|(?:there(?: is|'s)|I (?:see|smell)) smoke|"
+        r"\b(?:on fire|flames?|(?:frying pan|pan|oven|hob) (?:has )?ignited|"
+        r"(?:there(?: is|'s)|I (?:see|smell)) smoke|"
         r"smoke (?:is )?(?:coming|pouring|in (?:the |my ))|fire (?:has )?(?:started|broken out)|"
         r"(?:fire|smoke) alarm (?:is )?(?:going off|sounding|ringing|went off))\b"
     ),
@@ -58,6 +60,21 @@ SIGNALS = {
 }
 
 
+def noncurrent_mention(name, prefix, suffix):
+    # Suppress mentions tied to a reference or hypothetical question, one match at a time.
+    if name == "fire" and re.search(
+        r"\b(?:photo(?:graph)?|picture|video)\b[^.!?;]{0,55}\b(?:shows?|depicts?)\s*$", prefix, re.I
+    ):
+        return True
+    if name == "gas" and re.search(r"\b(?:what (?:to do|should I do)|what happens)\s+if\s+(?:I|we)\s*$",
+                                   prefix, re.I):
+        return not suffix.strip() or bool(re.fullmatch(r"\s+in (?:the )?future\s*", suffix, re.I))
+    return name == "building_hazard" and bool(
+        re.search(r"\b(?:diagram|manual|sign)\b[^.!?;]{0,30}\b(?:says?|reads?)\s+['\"]$", prefix, re.I)
+        and re.match(r"['\"]\s+as a warning\b", suffix, re.I)
+    )
+
+
 def safety_signals(message):
     normalized = message.replace("’", "'")
     clauses = re.split(r"[.!?;\n]+|\b(?:but|however)\b", normalized, flags=re.I)
@@ -83,6 +100,8 @@ def safety_signals(message):
                 ):
                     continue
                 prefix = clause[:match.start()]
+                if noncurrent_mention(name, prefix, clause[match.end():]):
+                    continue
                 if not re.search(r"\b(?:no|not|never|without)\s+(?:(?:any|a|an|signs? of|currently)\s+)*$", prefix, re.I):
                     signals.add(name)
                     break

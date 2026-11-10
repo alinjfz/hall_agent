@@ -2,17 +2,67 @@ import logging
 import os
 from atexit import register
 from functools import lru_cache
+from random import uniform
+from threading import BoundedSemaphore, Lock
+from time import monotonic, sleep
 
 import httpx
 from langchain_core.runnables import RunnableLambda
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from openai import APIConnectionError
 
 DEFAULTS = {"openai": "gpt-6-luna", "vertex": "gemini-3.1-flash-lite", "lmstudio": "qwen/qwen3.5-9b"}
+VERTEX_REQUEST_SLOTS = BoundedSemaphore(2)
+VERTEX_MAX_ATTEMPTS = 3
+VERTEX_REQUEST_INTERVAL = 1.0
+_vertex_pacing_lock = Lock()
+_vertex_next_request = 0.0
 
 
 class TransientModelError(RuntimeError):
     pass
+
+
+def _wait_for_vertex_slot(deadline):
+    global _vertex_next_request
+    while True:
+        with _vertex_pacing_lock:
+            now = monotonic()
+            if max(now, _vertex_next_request) >= deadline:
+                raise TimeoutError("Vertex request budget exhausted while pacing")
+            delay = _vertex_next_request - now
+            if delay <= 0:
+                _vertex_next_request = now + VERTEX_REQUEST_INTERVAL
+                return
+        sleep(delay)
+
+
+class VertexChatModel(ChatGoogleGenerativeAI):
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        budget = kwargs.pop("timeout", None) or self.timeout or 20
+        kwargs["max_retries"] = 1
+        deadline = monotonic() + budget
+        for attempt in range(VERTEX_MAX_ATTEMPTS):
+            if not VERTEX_REQUEST_SLOTS.acquire(timeout=max(0, deadline - monotonic())):
+                raise TimeoutError("Timed out waiting for a Vertex request slot")
+            try:
+                _wait_for_vertex_slot(deadline)
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("Vertex request budget exhausted")
+                return super()._generate(messages, stop=stop, run_manager=run_manager, timeout=remaining, **kwargs)
+            except Exception as exc:
+                status = getattr(exc, "code", None) or getattr(exc.__cause__, "code", None)
+                retryable = status in {408, 429, 500, 502, 503, 504} or isinstance(exc, httpx.TransportError)
+                if not retryable or attempt + 1 == VERTEX_MAX_ATTEMPTS:
+                    raise
+                delay = 0.5 * 2**attempt + uniform(0, 0.5)
+                if monotonic() + delay >= deadline:
+                    raise
+            finally:
+                VERTEX_REQUEST_SLOTS.release()
+            sleep(delay)
 
 
 def model_timeout(exc):
@@ -131,10 +181,8 @@ def triage_model(*, timeout=20):
         return openai_model(name, timeout=timeout)
 
     from google.auth import default
-    from langchain_google_genai import ChatGoogleGenerativeAI
-
     credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-    return ChatGoogleGenerativeAI(
+    return VertexChatModel(
         model=name, vertexai=True, credentials=credentials,
         project=os.environ["GOOGLE_CLOUD_PROJECT"],
         location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"),

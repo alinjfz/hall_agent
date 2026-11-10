@@ -9,7 +9,7 @@ from langsmith import traceable, tracing_context
 from langsmith.utils import tracing_is_enabled
 
 from halldesk.context import search_rules
-from halldesk.graph import GRAPH_VERSION, PROMPT_HASH, Context, graph_for, retrieve_context, revision_thread
+from halldesk.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, retrieve_context, revision_thread
 from halldesk.models import triage_model
 from halldesk.policy import build_proposal
 from halldesk.proposals import parse_proposal
@@ -37,23 +37,24 @@ def _trace_options(**metadata):
     return options
 
 
-def triage(store, report_id, model=None, *, claim=None, draft_replies=None):
+def triage(store, report_id, model=None, *, claim=None, draft_replies=None, deadlines=ModelDeadlines()):
     report = store.report(report_id)
     if report["triage_claim"] != claim:
         raise ReviewError("This report is already being triaged.")
     if report["result"] or report["proposal"]:
         return report["result"] or report["proposal"]
-    return _triage(store, report, model, draft_replies, langsmith_extra=_trace_options(
+    return _triage(store, report, model, draft_replies, deadlines, langsmith_extra=_trace_options(
         report_id=report_id, review_version=report["version"] + 1))
 
 
 @traceable(name="triage_report")
-def _triage(store, report, model=None, draft_replies=None):
+def _triage(store, report, model=None, draft_replies=None, deadlines=ModelDeadlines()):
     factory = triage_model if model is None else lambda **_: model
     config = {"configurable": {"thread_id": revision_thread(report["id"], report["version"] + 1)}}
     state = graph_for(store).invoke(
         {"report_id": report["id"], "expected_version": report["version"], "expected_claim": report["triage_claim"]},
-        config, context=Context(store, factory, draft_replies=model is None if draft_replies is None else draft_replies),
+        config, context=Context(store, factory, draft_replies=model is None if draft_replies is None else draft_replies,
+                                deadlines=deadlines),
         durability="sync")
     return state["proposal"]
 

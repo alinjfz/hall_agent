@@ -27,7 +27,6 @@ from langgraph.types import Command, RetryPolicy, interrupt
 from langsmith import get_current_run_tree, traceable
 
 from halldesk.context import handbook_query, relevant_examples, retrieve_policy, search_rules
-from halldesk.evidence import quoted_in
 from halldesk.interpretation import Interpretation
 from halldesk.models import model_timeout, structured_model, transient_error, triage_model
 from halldesk.policy import build_proposal, context_issue, identifies_fitting
@@ -45,15 +44,18 @@ SAFETY_PROMPT = (PROMPTS / "safety.txt").read_text()
 DRAFT_PROMPT = (PROMPTS / "draft_reply.txt").read_text()
 GRAPH_VERSION = "pipeline-rag-1"
 PROMPT_HASH = sha256("\0".join((PROMPT, SAFETY_PROMPT, DRAFT_PROMPT)).encode()).hexdigest()
-# Each model step has its own budget, so a slow interpretation cannot starve the
-# safety check or silently drop the reply draft.
-INTERPRET_SECONDS = 20
-SAFETY_SECONDS = 15
-DRAFT_SECONDS = 15
 MAX_ATTEMPTS = 3
 MAX_TOOL_CALLS = 2
 DRAFT_KINDS = {"draft", "escalate", "create", "answer"}
 UNANSWERED = "A grounded handbook answer could not be drafted."
+
+
+@dataclass(frozen=True)
+class ModelDeadlines:
+    """Separate budgets in seconds for each model stage."""
+    interpretation: int = 20
+    safety: int = 15
+    drafting: int = 15
 
 
 @dataclass
@@ -62,6 +64,7 @@ class Context:
     store: Any = None
     model_factory: Any = None
     draft_replies: bool = True
+    deadlines: ModelDeadlines = ModelDeadlines()
 
 
 class State(TypedDict, total=False):
@@ -223,10 +226,10 @@ def build_graph():
                     "version": report["version"], "existing": True}
         return {"report_id": report_id, "report": report}
 
-    def safety_gate(state: State):
+    def safety_gate(state: State, runtime: Runtime[Context]):
         # The interpretation deadline lives in state so that retries share one budget.
         return {"signals": sorted(safety_signals(state["report"]["message"])),
-                "expires": time() + INTERPRET_SECONDS}
+                "expires": time() + (runtime.context or Context()).deadlines.interpretation}
 
     def load_context(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         context = retrieve_context(store_for_run(config, runtime), state["report"])
@@ -243,7 +246,8 @@ def build_graph():
     def check_safety(state: State, runtime: Runtime[Context]):
         message = state["report"]["message"]
         try:
-            result = invoke_structured(model_for_run(runtime), time() + SAFETY_SECONDS, SafetyCheck, [
+            deadline = time() + (runtime.context or Context()).deadlines.safety
+            result = invoke_structured(model_for_run(runtime), deadline, SafetyCheck, [
                 SystemMessage(SAFETY_PROMPT),
                 HumanMessage(json.dumps({"resident_report": message}, ensure_ascii=False)),
             ])
@@ -251,9 +255,10 @@ def build_graph():
         except Exception as exc:
             logging.warning("Safety screening unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
             return {"safety_review": ["unverified_safety"], "safety_evidence": None}
-        if check.hazard is None:  # Small models often return "" rather than null evidence.
+        if check.hazard is None and check.assessment in (None, "not_current") and not (check.evidence or "").strip():
             return {"safety_review": [], "safety_evidence": None}
-        if check.hazard and quoted_in(check.evidence, message):
+        if (check.hazard and check.assessment in (None, "current")
+                and check.evidence and check.evidence.strip() and check.evidence in message):
             return {"safety_review": [check.hazard], "safety_evidence": check.evidence}
         return {"safety_review": ["unverified_safety"], "safety_evidence": None}
 
@@ -309,11 +314,12 @@ def build_graph():
             return {"proposal": dump_proposal(fallback)}
 
         answer = proposal.kind == "answer"
-        if not (runtime.context or Context()).draft_replies or not state["sections"]:
+        context = runtime.context or Context()
+        if not context.draft_replies or not state["sections"]:
             return unanswered() if answer else {}
         try:
             draft, shown = draft_with_search(
-                model_for_run(runtime), time() + DRAFT_SECONDS,
+                model_for_run(runtime), time() + context.deadlines.drafting,
                 {"report": state["report"]["message"], "job": state["proposal"].get("job")}, state["sections"])
         except Exception as exc:
             logging.warning("Reply draft failed for report %s (%s)", state["report_id"], type(exc).__name__)

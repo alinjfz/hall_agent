@@ -25,17 +25,23 @@ def test_emergency_is_ready_at_intake_and_records_only_one_reply(tmp_path):
     assert sum(row["event"] == "emergency_reply" for row in store.activity(report_id)) == 1
 
 
-@pytest.mark.parametrize("bad_evidence", [False, True])
-def test_unverified_safety_goes_to_urgent_review(tmp_path, bad_evidence):
+@pytest.mark.parametrize("check", [
+    None,
+    SafetyCheck(hazard="fire", evidence="fabricated quote", assessment="current"),
+    SafetyCheck(hazard="fire", evidence="my radiator is cold", assessment="current"),
+    SafetyCheck(hazard=None, evidence=None, assessment="uncertain"),
+    SafetyCheck(hazard="fire", evidence="My radiator is cold.", assessment="not_current"),
+], ids=["timeout", "fabricated", "changed-case", "uncertain", "inconsistent"])
+def test_unverified_safety_goes_to_urgent_review(tmp_path, check):
     from halldesk.interpretation import Interpretation
 
     class Model:
         def with_structured_output(self, schema, **kwargs):
             def answer(_):
                 if schema is SafetyCheck:
-                    if bad_evidence:
-                        return SafetyCheck(hazard="fire", evidence="fabricated quote")
-                    raise TimeoutError
+                    if check is None:
+                        raise TimeoutError
+                    return check
                 return {"parsed": Interpretation(intent="new", category="heating", fitting="radiator",
                                                  evidence="radiator is cold")}
             return RunnableLambda(answer)
