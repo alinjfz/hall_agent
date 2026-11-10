@@ -67,11 +67,11 @@
   },
   {
     "id": "PLUMBING-1",
-    "revision": 3,
+    "revision": 4,
     "topic": "plumbing",
     "target": {"priority": "P3", "days": 14},
     "clarification_question": "Is the tap or shower only dripping, or is water spreading beyond the fitting?",
-    "summary": "A contained tap or shower drip without hazard signs has a P3 fourteen-day target. Ask one question if the extent is unclear. Water spreading outside the fitting, uncontrolled water or water coming through a ceiling requires urgent human assessment.",
+    "summary": "A contained tap or shower drip without hazard signs has a P3 fourteen-day target. Require report evidence of dripping at the fitting or water draining into a basin, sink, bath, shower tray or drain. The word leaking alone leaves the extent unclear and requires a clarification question. Water spreading outside the fitting, uncontrolled water or water coming through a ceiling requires urgent human assessment.",
     "source": "UniHelp demo policy"
   },
   {
@@ -83,9 +83,9 @@
   },
   {
     "id": "QUESTION-1",
-    "revision": 1,
+    "revision": 2,
     "topic": "question",
-    "summary": "Answer a question about residence rules or procedures only from retrieved resident handbook passages, citing them, and hold the answer for staff approval. If the handbook does not cover the question, send it to the residence duty reviewer.",
+    "summary": "Answer a question about residence rules or procedures only from retrieved resident handbook passages that directly support the requested fact, citing them, and hold the answer for staff approval. Laundry opening or closing times require a published laundry-hours section. Quiet hours and general opening guidance do not establish laundry hours. If the handbook does not cover the question, send it to the residence duty reviewer.",
     "source": "UniHelp demo policy"
   },
   {
@@ -98,10 +98,10 @@
   },
   {
     "id": "FIRE-1",
-    "revision": 1,
+    "revision": 2,
     "topic": "fire",
     "destination": "Fire and rescue service",
-    "summary": "Active fire, smoke from a possible fire, or a sounding fire alarm with no confirmed drill requires emergency handling. A faulty detector, chirping alarm, obstructed escape route, or defective fire door without an active incident requires urgent residence staff assessment.",
+    "summary": "Active fire, smoke from a possible fire, or a sounding fire alarm with no confirmed drill requires emergency handling. Intermittent chirping by itself indicates an equipment fault and requires urgent residence staff assessment, as do a faulty detector, obstructed escape route or defective fire door. A separate report of active fire, smoke or a sounding alarm retains emergency precedence.",
     "reply": "If you see fire or smoke, or a fire alarm is sounding and staff have not confirmed a drill, call 999 immediately. Follow your building’s fire instructions and the emergency operator’s directions. If you cannot get out safely, tell the operator exactly where you are.",
     "source": "https://www.london-fire.gov.uk/safety/have-you-spotted-a-fire-risk/"
   },

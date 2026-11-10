@@ -1,6 +1,7 @@
 from time import time
 
 import pytest
+from langchain_core.documents import Document
 from langchain_core.runnables import RunnableLambda
 
 from unihelp import graph
@@ -9,6 +10,41 @@ from unihelp.replies import grounded_reply
 from unihelp.safety import SafetyCheck
 from unihelp.store import ReviewError, Store
 from unihelp.workflow import review, triage
+
+
+def test_isolated_detector_chirp_needs_no_model_call(tmp_path):
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 5", "Alarm", "My smoke detector keeps chirping every few minutes.")
+    calls = []
+
+    class Model:
+        def with_structured_output(self, schema, **kwargs):
+            calls.append(schema)
+            return RunnableLambda(lambda _: SafetyCheck(hazard="fire", evidence=store.report(report_id)["message"]))
+
+    proposal = triage(store, report_id, model=Model())
+    assert proposal["urgency"] == "urgent"
+    assert proposal["signals"] == ["fire_equipment"]
+    assert not calls
+
+
+def test_laundry_hours_requires_relevant_handbook_coverage(tmp_path, monkeypatch):
+    from tests.scripted_model import scripted
+
+    monkeypatch.setattr(graph, "search_handbook", lambda _: [
+        Document(page_content="Use the posted quiet hours.", metadata={"id": "quiet-hours"})
+    ])
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    message = "What time does the laundry room close on Sundays?"
+    report_id = store.add_report("Flat 5", "Laundry", message)
+    model = scripted("Flat 5", "question", {"intent": "question", "evidence": "close on Sundays?"},
+                     draft={"body": "Use the hours posted in your building.", "section_ids": ["quiet-hours"]})
+
+    proposal = triage(store, report_id, model=model, draft_replies=True)
+    assert proposal["kind"] == "manual"
+    assert proposal["reason"] == "The handbook does not list the requested laundry hours."
 
 
 def test_vertex_rate_limit_cooldown_applies_to_other_requests(monkeypatch):

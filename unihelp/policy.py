@@ -11,6 +11,19 @@ from unihelp.safety import safety_signals
 from unihelp.store import LABELS, is_overdue
 
 
+LAUNDRY_HOURS = re.compile(
+    r"\b(?:laundry|launderette|laundrette)\b[^.!?;]{0,65}\b(?:hours?|opening|closes?|open|closing|schedule)\b"
+    r"|\b(?:hours?|opening|closes?|open|closing|schedule)\b[^.!?;]{0,65}\b(?:laundry|launderette|laundrette)\b",
+    re.I,
+)
+CONTAINED_LEAK = re.compile(
+    r"\b(?:tap|faucet|shower(?:head)?)(?:\s+(?:is|keeps?|only|just)){0,3}\s+drip(?:s|ping)?\b"
+    r"|\b(?:drips?|dripping|leaks?|leaking|runs?|running) (?:only )?into (?:the |a )?"
+    r"(?:basin|sink|bath|shower tray|drain)\b",
+    re.I,
+)
+
+
 def manual(reason):
     return {"kind": "manual", "reason": reason}
 
@@ -115,7 +128,7 @@ def apply_policy(report, interpretation, jobs, policies, now, job_reports=None, 
     if interpretation.intent == "multiple":
         return handle_multiple(report, interpretation, policies)
     if interpretation.intent == "question":
-        return handle_question(interpretation, policies, sections)
+        return handle_question(interpretation, policies, sections, message)
     if interpretation.intent == "access" or interpretation.category in {"lockout", "spare_key"}:
         return handle_access(report, interpretation, jobs, policies)
     if interpretation.power_scope == "unknown" and (rule := policies.get("urgent")):
@@ -146,12 +159,19 @@ def handle_multiple(report, interpretation, policies):
     return {"kind": "split", "issues": issues, "rule": rule}
 
 
-def handle_question(interpretation, policies, sections):
+def handle_question(interpretation, policies, sections, message):
     rule = policies.get("question")
     if not rule:
         return manual("The handbook question policy could not be verified.")
     if not interpretation.evidence.strip():
         return manual("The interpretation lacks verified evidence from the report.")
+    if LAUNDRY_HOURS.search(message) and not any(
+        section.get("id") == "laundry-hours" for section in sections or ()
+    ):
+        return manual("The handbook does not list the requested laundry hours.") | {
+            "rule": rule, "evidence": interpretation.evidence,
+            "reply": "The resident handbook does not list those laundry hours. Residence staff will follow up.",
+        }
     if not sections:
         return manual("The handbook does not cover this question.") | {
             "reply": "We couldn't find this in the resident handbook. Residence staff will follow up.",
@@ -211,7 +231,9 @@ def handle_repair(report, interpretation, jobs, policies, now, job_reports):
         if duplicate_rule := policies.get("duplicate"):
             proposal["rule"] = duplicate_rule
         return proposal
-    if category == "plumbing" and interpretation.leak_contained is not True:
+    if category == "plumbing" and (
+        interpretation.leak_contained is not True or not CONTAINED_LEAK.search(evidence)
+    ):
         if rule and (question := rule.get("clarification_question")):
             return {"kind": "plumbing_question", "fitting": fitting, "rule": rule, "question": question}
         return manual("Confirm the severity of the leak before proposing a repair.")

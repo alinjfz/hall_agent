@@ -1,7 +1,7 @@
 """Production graph: triage, wait for staff, then apply their decision.
 
-Interpret (one structured call) and screen for safety in parallel, retrieve handbook
-passages, apply deterministic policy, then draft a cited reply from the passages.
+Screen for safety, interpret routine reports, retrieve handbook passages, apply
+deterministic policy, then draft a cited reply from the passages.
 """
 
 import json
@@ -34,7 +34,7 @@ from unihelp.proposals import parse_proposal
 from unihelp.replies import ReplyDraft, grounded_reply
 from unihelp.review_policy import revise_proposal
 from unihelp.retrieval import search_handbook
-from unihelp.safety import SafetyCheck, explicit_retraction, private_lighting_fault, safety_signals
+from unihelp.safety import SafetyCheck, explicit_retraction, isolated_alarm_chirp, private_lighting_fault, safety_signals
 from unihelp.store import ReviewError, Store
 from unihelp.tools import search_policy
 
@@ -42,7 +42,7 @@ PROMPTS = Path(__file__).with_name("prompts")
 PROMPT = (PROMPTS / "interpret.txt").read_text()
 SAFETY_PROMPT = (PROMPTS / "safety.txt").read_text()
 DRAFT_PROMPT = (PROMPTS / "draft_reply.txt").read_text()
-GRAPH_VERSION = "pipeline-rag-2"
+GRAPH_VERSION = "pipeline-rag-3"
 PROMPT_HASH = sha256("\0".join((PROMPT, SAFETY_PROMPT, DRAFT_PROMPT)).encode()).hexdigest()
 MAX_ATTEMPTS = 3
 MAX_TOOL_CALLS = 2
@@ -245,6 +245,8 @@ def build_graph():
     def check_safety(state: State, runtime: Runtime[Context]):
         report = state["report"]
         message = report["message"]
+        if isolated_alarm_chirp(message):
+            return {"safety_review": ["fire_equipment"], "safety_evidence": message}
         try:
             deadline = time() + (runtime.context or Context()).deadlines.safety
             result = invoke_structured(model_for_run(runtime), deadline, SafetyCheck, [

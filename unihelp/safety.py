@@ -33,6 +33,16 @@ def private_lighting_fault(location, message, evidence):
     )
 
 
+def isolated_alarm_chirp(message):
+    """Recognize a single equipment report without overriding mixed hazard reports."""
+    return bool(re.fullmatch(
+        r"(?:the |my |our )?(?:smoke|fire) (?:alarm|detector) "
+        r"(?:(?:is |keeps )?chirping|chirps)"
+        r"(?: (?:every (?:few )?(?:\d+ )?(?:seconds?|minutes?)|intermittently))?[.!]?",
+        message.strip(), re.I,
+    ))
+
+
 # Explicit signals support the staff fallback when model safety screening fails.
 SIGNALS = {
     "fire": (
