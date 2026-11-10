@@ -19,6 +19,10 @@ The historical artifacts predate the v2 dataset and were checked in on 2026-11-0
 | [current-hosted-chase.json](current-hosted-chase.json) | Hosted chase comparison, current graph | Polish working tree on `534a22a`; Qwen 3.5 9B, 2026-11-09 | Three selected cases × three trials |
 | [current-hosted-curated.json](current-hosted-curated.json) | Hosted curated smoke with guidance | Polish working tree on `534a22a`; Qwen 3.5 9B, 2026-11-09 | One case × three trials |
 | [vertex-safety-holdout.json](vertex-safety-holdout.json) | Live safety holdout | `9b4b811` working tree; Gemini 3.1 Flash-Lite, 2026-11-10 | 50 cases × three trials, local traces. Replaces a run discarded for provider rate limiting |
+| [vertex-safety-blind.json](vertex-safety-blind.json) | Blind safety holdout, hosted | `4cf3770` working tree; Gemini 3.1 Flash-Lite, 2026-11-10 | 31 cases × three trials |
+| [vertex-hosted-pre-fix.json](vertex-hosted-pre-fix.json) | Hosted triage rerun before routing fixes | `4cf3770` working tree with `unihelp/policy.py` and `unihelp/prompts/interpret.txt` from `b30291a`; Gemini 3.1 Flash-Lite, GPT judge rubric v3, 2026-11-10 | 65 cases × three trials |
+| [vertex-hosted-post-fix.json](vertex-hosted-post-fix.json) | Hosted triage rerun after routing fixes | `4cf3770` working tree; same model, judge and dataset fingerprint, 2026-11-10 | 65 cases × three trials |
+| [vertex-safety-prompt-experiment.json](vertex-safety-prompt-experiment.json) | Triage suite with a reverted safety-prompt sentence | `4cf3770` working tree plus the reverted sentence; local, 2026-11-10 | 65 cases × three trials; 191/195 |
 
 The two chase ablation arms share a fingerprint. Two handbook section labels were corrected afterwards for the full v2 run; the report and job inputs were unchanged.
 

@@ -30,7 +30,10 @@ from unihelp.store import Store
 from unihelp.workflow import triage
 
 HERE = Path(__file__).resolve().parent
-DATASET_NAMES = {"triage": "unihelp-triage-v3", "safety": "unihelp-safety-holdout", "curated": "unihelp-curated"}
+DATASET_NAMES = {"triage": "unihelp-triage-v3", "safety": "unihelp-safety-holdout",
+                 "safety-blind": "unihelp-safety-blind", "curated": "unihelp-curated"}
+DATASET_FILES = {"triage": "dataset.json", "safety": "safety_holdout.json", "safety-blind": "safety_blind.json"}
+SAFETY_SUITES = {"safety", "safety-blind"}
 REPETITIONS = 3
 # scripts/eval-baseline.sh runs this same harness against the pinned original agent,
 # whose triage() took a `passes` argument. That is the only reason these checks exist.
@@ -52,8 +55,7 @@ def local_trace_client():
 
 
 def load_cases(suite):
-    path = HERE / ("dataset.json" if suite == "triage" else "safety_holdout.json")
-    return json.loads(path.read_text())
+    return json.loads((HERE / DATASET_FILES[suite]).read_text())
 
 
 def prepare(store, inputs, guidance=()):
@@ -291,6 +293,19 @@ def langsmith_evaluator(check):
     return score
 
 
+def combined_evaluator(name, scorers):
+    """Report every check from one evaluator run.
+
+    LangSmith counts each evaluator run as a trace. One run per check spent about
+    twenty traces per trial, which exhausts a free monthly quota in under 250 trials.
+    """
+    def score(run, example):
+        return {"results": [scorer(run, example) for scorer in scorers]}
+
+    score.__name__ = name
+    return score
+
+
 def main():
     load_dotenv()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -344,7 +359,7 @@ def main():
         parser.error("Set LANGSMITH_API_KEY for hosted experiments.")
     if args.without_guidance and not args.curated:
         parser.error("--without-guidance requires --curated.")
-    if args.curated and (legacy or args.suite == "safety"):
+    if args.curated and (legacy or args.suite in SAFETY_SUITES):
         parser.error("Curated runs require the current triage graph.")
     if args.suite == "curated" and not args.curated:
         parser.error("Pass an approved export with --curated.")
@@ -394,11 +409,13 @@ def main():
                              passes=args.passes, hosted=hosted, guidance=guidance, deadlines=deadlines)
 
     checks = (*evaluators.CORE, evaluators.reply_grounded)
-    graders = [langsmith_evaluator(check) for check in (
+    graders = [combined_evaluator("deterministic_checks", [langsmith_evaluator(check) for check in (
         *checks, *evaluators.TRAJECTORY, evaluators.intake_urgency, evaluators.retrieval_recall_at_3,
-        evaluators.retrieval_hit_at_1)]
+        evaluators.retrieval_hit_at_1)])]
     if args.judge:
-        graders.extend(evaluator_for(criterion) for criterion in RUBRICS)
+        judges = [evaluator_for(criterion) for criterion in RUBRICS]
+        graders.append(combined_evaluator("reply_judge", [
+            lambda run, example, judge=judge: judge(example.inputs, run.outputs) for judge in judges]))
     experiment = client.evaluate(
         target, data=examples, evaluators=graders,
         experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,
@@ -519,7 +536,7 @@ def main():
     print(json.dumps(safety))
     if summary["experiment_url"]:
         print(summary["experiment_url"])
-    if args.suite == "safety":
+    if args.suite in SAFETY_SUITES:
         return int(bool(safety["live"]["misses"] or any(row["error"] for row in rows)))
     comparison = args.against
     if comparison is None and not args.case and args.suite == "triage" and not legacy:

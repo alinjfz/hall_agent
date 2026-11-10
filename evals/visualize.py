@@ -8,8 +8,8 @@ from itertools import groupby
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-DATASETS = {"triage": "dataset.json", "safety": "safety_holdout.json", "curated": "curated.json"}
-SUITES = {"triage": "Triage", "safety": "Safety holdout", "curated": "Curated holdout"}
+DATASETS = {"triage": "dataset.json", "safety": "safety_holdout.json", "safety-blind": "safety_blind.json", "curated": "curated.json"}
+SUITES = {"triage": "Triage", "safety": "Safety holdout", "safety-blind": "Blind safety holdout", "curated": "Curated holdout"}
 
 
 def label(key):
