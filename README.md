@@ -1,5 +1,7 @@
 # UniHelp
 
+[Start here for the take-home review](instructions/README.md).
+
 UniHelp triages maintenance reports for Juniper Court, a fictional university residence. Residents need a grounded answer or the right next step. Residence staff need enough evidence to act without opening duplicate jobs or missing urgent reports. UniHelp proposes repairs, checks existing jobs, answers handbook questions and drafts replies in a Streamlit inbox. When the model confirms a fire or gas emergency with a quote found in the report, preset guidance is posted in the inbox straight away. Staff review proposed job actions and routine replies before they take effect.
 
 ```mermaid
@@ -47,10 +49,10 @@ A good run assigns the right route and urgency, uses a verified job when followi
 | [Full v3 run before routing fixes](evals/results/vertex-gpt-triage-v2.json) | 190/195 | 65 cases × 3 trials. Portable lighting failed all three trials. Two other cases missed the expected route once each. |
 | [Targeted rerun after routing fixes](evals/results/vertex-routing-fixes.json) | 24/24 | The three failed cases and five controls × 3 trials. |
 | [Full run after routing fixes](evals/results/vertex-full-post-fix.json) | 195/195 | The same 65 cases × 3 trials, same dataset fingerprint and model. |
-| [Hosted rerun, before fixes](evals/results/vertex-hosted-pre-fix.json) · [LangSmith](https://smith.langchain.com/o/1df125a0-08b6-4b58-841a-2a13928660dc/datasets/c0e0a6f4-cc2d-4100-9afe-0a8e3f865de3/compare?selectedSessions=08fad997-77ac-4430-9ca0-2011d1328fc0) | 191/195 | Today's code with the pre-fix policy file and interpretation prompt swapped back in. Portable lighting failed all three trials; the injected approval was split out as an issue once. |
-| [Hosted rerun, after fixes](evals/results/vertex-hosted-post-fix.json) · [LangSmith](https://smith.langchain.com/o/1df125a0-08b6-4b58-841a-2a13928660dc/datasets/c0e0a6f4-cc2d-4100-9afe-0a8e3f865de3/compare?selectedSessions=8726898c-b75c-40e3-874e-3f165910089e) | 195/195 | Today's code, same dataset fingerprint. |
+| [Hosted rerun, before fixes](evals/results/vertex-hosted-pre-fix.json) | 191/195 | Today's code with the pre-fix policy file and interpretation prompt swapped back in. Portable lighting failed all three trials; the injected approval was split out as an issue once. |
+| [Hosted rerun, after fixes](evals/results/vertex-hosted-post-fix.json) | 195/195 | Today's code, same dataset fingerprint. |
 
-[Compare the two hosted reruns side by side in LangSmith](https://smith.langchain.com/o/1df125a0-08b6-4b58-841a-2a13928660dc/datasets/c0e0a6f4-cc2d-4100-9afe-0a8e3f865de3/compare?selectedSessions=08fad997-77ac-4430-9ca0-2011d1328fc0,8726898c-b75c-40e3-874e-3f165910089e). The first three rows were local runs. The hosted reruns repeat the comparison so each trial, evaluator score and trace can be opened; they isolate the routing fixes because everything else is held at the current revision. The GPT judge passed 17 of 18 verdicts in each hosted run, failing one draft of the complaint-contact reply each time.
+The first three rows were local runs. The hosted reruns isolate the routing fixes because everything else is held at the current revision. The linked JSON files include individual trial outcomes and evaluator scores. The GPT judge passed 17 of 18 verdicts in each hosted run, failing one draft of the complaint-contact reply each time.
 
 All runs used Gemini 3.1 Flash-Lite. After reviewing the failures, the policy was tightened to clarify reports that mention only portable lighting, route follow-ups without a verified matching repair to staff, and reject approval instructions embedded in a proposed split issue. The targeted rerun checks those fixes on the selected cases, and the full rerun confirms no other case regressed. The fixes were written against these cases, so 195/195 shows the regressions are closed, not that new reports will route correctly. The safety holdout is the test of that. Handbook recall@3 was 0.95 and hit@1 0.68 in both full runs, counting only trials where a handbook search ran; urgent handoffs skip the search by design. [Experiment notes](evals/results/README.md#rubric-v3-and-routing-fixes).
 
@@ -66,7 +68,7 @@ The historical overdue chase passed 3/3 trials on both agent versions using Qwen
 
 The hosted v2 chase subset used the same pinned dataset version, Qwen 3.5 9B and three trials per case.
 
-| V2 chase subset | [Pinned baseline](https://smith.langchain.com/o/84ac8070-9fc2-4628-86a1-bd1930514885/datasets/41973756-a698-4a88-b7e2-2b4675a5df8c/compare?selectedSessions=cf4695d8-b976-47d6-a1a1-4dc95df9e748) | [Unified graph](https://smith.langchain.com/o/84ac8070-9fc2-4628-86a1-bd1930514885/datasets/41973756-a698-4a88-b7e2-2b4675a5df8c/compare?selectedSessions=2b5375a5-e61b-4000-b90a-81d2eb22843b) |
+| V2 chase subset | [Pinned baseline](evals/results/baseline-hosted-chase.json) | [Unified graph](evals/results/current-hosted-chase.json) |
 | --- | ---: | ---: |
 | Normal (1 case) | 3/3 | 3/3 |
 | Ambiguous (2 cases) | 4/6 | 3/6 |
@@ -92,7 +94,7 @@ Two caveats. The holdout is no longer blind: earlier runs were inspected, and `f
 
 Because that holdout had been inspected, a second one was written afterwards and run without tuning: [31 blind cases](evals/safety_blind.json), 21 hazards and 10 look-alikes, worded to avoid the phrases in the prompts and the first holdout. The cases and labels were drafted with a coding assistant.
 
-| Blind holdout ([result](evals/results/vertex-safety-blind.json) · [LangSmith](https://smith.langchain.com/o/1df125a0-08b6-4b58-841a-2a13928660dc/datasets/177d6b7d-4481-4ff8-b33c-0f0299deb07c/compare?selectedSessions=e543ca40-8ebe-4354-ac0a-f40a182a281f)) | Hazard trials at expected urgency | Hazard cases right in every trial | Look-alike cases flagged at least once |
+| Blind holdout ([result](evals/results/vertex-safety-blind.json)) | Hazard trials at expected urgency | Hazard cases right in every trial | Look-alike cases flagged at least once |
 | --- | ---: | ---: | ---: |
 | Intake rules alone | 3/63 | 1/21 | 1/10 |
 | Live graph | 63/63 | 21/21 | 0/10 |
@@ -119,7 +121,7 @@ The [v3 triage dataset](evals/dataset.json) contains 65 synthetic English report
 
 ## Traces and reproducibility
 
-Open the public traces below to inspect individual failures or use the LangSmith comparison links above for hosted experiments. For a local run, use an active model provider and run the overdue case. The HTML viewer shows the fixture, expected outcome and actual trial results.
+The [three failure examples](#three-failures) link to individual public LangSmith traces. The [reviewer guide](instructions/README.md) shows how to inspect the saved hosted results locally. To generate fresh results, configure a model provider and run the overdue case. The HTML viewer shows the fixture, expected outcome and actual trial results.
 
 ```sh
 make eval EVAL_ARGS="--case overdue --output /tmp/unihelp-overdue.json"
@@ -156,11 +158,6 @@ This is a single workspace demo without authentication, multi-tenancy, a distrib
 **What the assistants did.** Wrote much of the implementation and unit tests from those designs, drafted the remaining synthetic eval cases, helped assign the judge's reference labels, and ran the hosted reruns.
 
 **What I checked myself.** I reviewed every case and expected outcome in the assistant-drafted datasets. I read the failing traces before accepting any fix, and each fix in the [failure log](docs/failures.md) links the trace and the rerun that I compared. The numbers in this README come from the result files in [evals/results](evals/results/README.md).
-
-## Submission links
-
-- Repository URL pending. This checkout has no configured Git remote.
-- Screen recording link pending. The quickstart above gives a walkthrough of the same review flow.
 
 ## Reference
 
