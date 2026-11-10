@@ -22,17 +22,19 @@ flowchart LR
 
 ## Quickstart
 
-Use Python 3.12 and an existing [LM Studio local API server](https://lmstudio.ai/docs/developer/openai-compat/tools) with `qwen/qwen3.5-9b` loaded.
+Use Python 3.12. The results below were produced with Gemini 3.1 Flash-Lite on Vertex AI, so the quickstart uses the same provider.
 
 ```sh
 make setup BOOTSTRAP_PYTHON=python3.12
 cp -n .env.example .env
-# Set UNIHELP_SEED_SAMPLE=true in .env and point UNIHELP_DB at a fresh database.
-make test
+# In .env set UNIHELP_PROVIDER=vertex, GOOGLE_CLOUD_PROJECT, and GOOGLE_API_KEY
+# (or leave the key empty to use Google Application Default Credentials).
+# Set UNIHELP_SEED_SAMPLE=true and point UNIHELP_DB at a fresh database.
+make test   # 152 tests with a scripted model; no provider needed
 make run
 ```
 
-For a hosted provider, set `UNIHELP_PROVIDER=openai` with `OPENAI_API_KEY`, or `UNIHELP_PROVIDER=vertex` with `GOOGLE_CLOUD_PROJECT` and either `GOOGLE_API_KEY` or Google Application Default Credentials. Optional Vertex embeddings use Application Default Credentials.
+Other providers: set `UNIHELP_PROVIDER=openai` with `OPENAI_API_KEY`, or keep the default `UNIHELP_PROVIDER=lmstudio` to run offline against an [LM Studio local API server](https://lmstudio.ai/docs/developer/openai-compat/tools) with `qwen/qwen3.5-9b` loaded. The earlier chase experiments used that local model. Optional Vertex embeddings use Application Default Credentials.
 
 Open the Streamlit URL printed in the terminal. In **Inbox**, open a sample report and review the proposed action, evidence and draft. Approve or edit the proposal, then inspect the saved decision in **Handled** or the updated proposal in **Needs review**. The [running guide](docs/running.md) covers LangGraph Studio, the optional worker and additional provider settings.
 
@@ -48,7 +50,7 @@ A good run assigns the right route and urgency, uses a verified job when followi
 
 All three runs used Gemini 3.1 Flash-Lite. After reviewing the failures, the policy was tightened to clarify reports that mention only portable lighting, route follow-ups without a verified matching repair to staff, and reject approval instructions embedded in a proposed split issue. The targeted rerun checks those fixes on the selected cases, and the full rerun confirms no other case regressed. The fixes were written against these cases, so 195/195 shows the regressions are closed, not that new reports will route correctly. The safety holdout is the test of that. Handbook recall@3 was 0.95 and hit@1 0.68 in both full runs, counting only trials where a handbook search ran; urgent handoffs skip the search by design. [Experiment notes](evals/results/README.md#rubric-v3-and-routing-fixes).
 
-Both full runs caught all 22 labeled triage hazards in every trial. The separate holdout below tests different hazard paraphrases and look-alikes, and currently has results for intake rules alone.
+Both full runs caught all 22 labeled triage hazards in every trial. The separate [safety holdout](#safety-holdout) tests different hazard paraphrases and look-alikes.
 
 ### Earlier chase experiments
 
@@ -73,9 +75,18 @@ The hosted v2 chase subset used the same pinned dataset version, Qwen 3.5 9B and
 | Median latency | 4.9 s | 9.8 s |
 | Model calls | 27 | 45 |
 
-| Safety holdout | Hazards caught | Look-alikes flagged |
-| --- | ---: | ---: |
-| Intake rules alone | 3/34 | 3/12 |
+### Safety holdout
+
+The holdout has 35 hazard paraphrases and 15 look-alikes, kept apart from the triage dataset. [Live run](evals/results/vertex-safety-holdout.json): Gemini 3.1 Flash-Lite, 50 cases × 3 trials, run locally.
+
+| Safety holdout | Hazard trials at expected urgency | Hazard cases right in every trial | Look-alike cases flagged at least once |
+| --- | ---: | ---: | ---: |
+| Intake rules alone | 24/105 | 8/35 | 1/15 |
+| Live graph | 105/105 | 35/35 | 0/15 |
+
+Two caveats. The holdout is no longer blind: earlier runs were inspected, and `fire-04` ("the carpet catching light from the heater") is in the [failure log](docs/failures.md) from one of them. It passed 3/3 here, but in a previous run the same code graded it urgent instead of emergency in one trial, so that case is flaky, not fixed. An emergency graded as urgent still reaches on-duty staff, but the resident gets no preset 999 guidance.
+
+That previous run is also why this one was repeated. It shared the Vertex quota with a second experiment, and 10 of its 150 trials hit provider rate limits during the safety check. All ten went to staff as "safety could not be verified", and none was routed as routine. That is the intended failure mode, but it produced two false urgent alerts on look-alikes and withheld the emergency reply from three gas reports, so the result was discarded.
 
 ## Three failures
 
@@ -87,7 +98,7 @@ The hosted v2 chase subset used the same pinned dataset version, Qwen 3.5 9B and
 
 I wrote the [30 resident-message cases](evals/resident-message-cases.json) by hand, including their expected outcomes. I manually reviewed the cases and expected outcomes in the other evaluation datasets.
 
-The [v3 triage dataset](evals/dataset.json) contains 65 synthetic English reports, with 13 normal, 12 edge, 22 hazard, 10 ambiguous and 8 adversarial cases. Five are handbook questions, including two the handbook cannot answer. The [safety holdout](evals/safety_holdout.json) adds 34 hazard paraphrases and 12 look-alikes. Each report runs three times with fixed inputs and separate expected outcomes.
+The [v3 triage dataset](evals/dataset.json) contains 65 synthetic English reports, with 13 normal, 12 edge, 22 hazard, 10 ambiguous and 8 adversarial cases. Five are handbook questions, including two the handbook cannot answer. The [safety holdout](evals/safety_holdout.json) adds 35 hazard paraphrases and 15 look-alikes. Each report runs three times with fixed inputs and separate expected outcomes.
 
 [Deterministic checks](evals/evaluators.py) cover routes, urgency, job matching, deadlines, literal evidence and writes before approval. Trajectory checks record who initiated each lookup, how many model calls ran and whether the model nominated the right job before Python checked it. Retrieval recall@3 and hit@1 check handbook passages, and the [retrieval sweep](evals/retrieval_sweep.py) measures the same production query without a chat model. With `--agent vertex --judge`, Gemini on Vertex AI drafts the reply and a separate GPT evaluator scores grounding, unsupported promises and whether the reply answers the resident. The [calibration runner](evals/calibrate.py) compares judge verdicts with reference labels. GPT scored six model drafts in each full Vertex run. It passed all three criteria on each draft in the first run and 17 of 18 verdicts in the post-fix run, failing grounding on a reply that assumed the resident had a job number. The revised rubric matched 21/21 Codex-assisted reference labels on each of the reused development and test splits. Independent human labeling and a fresh holdout are still pending. [Judge results and error analysis](evals/results/README.md#gpt-judge-contrast-check).
 
@@ -121,11 +132,15 @@ Start in shadow mode with staff reviewing proposals and scoring them against the
 
 ## Limits
 
-This is a single workspace demo without authentication, multi-tenancy, a distributed worker or external message delivery. The model can miss hazards or time out; staff remain responsible for reviewing the queue. A live run on the separate safety holdout remains open. The judge has limited coverage on live drafts, and independent human calibration is still pending. The embedding similarity floor is provisional until `evals.retrieval_sweep --hybrid` is run against a real embedding model, and keyword search alone still returns passages for questions the handbook cannot answer, so those rely on the drafter declining.
+This is a single workspace demo without authentication, multi-tenancy, a distributed worker or external message delivery. The model can miss hazards or time out; staff remain responsible for reviewing the queue. The safety holdout passed in full on its latest run but has been inspected before, so it needs fresh cases to stay a real test; `fire-04` has been graded one level low in an earlier trial. When the provider rate-limits the safety check, reports go to staff as unverified and fire or gas reports lose the automatic emergency reply. The judge has limited coverage on live drafts, and independent human calibration is still pending. The embedding similarity floor is provisional until `evals.retrieval_sweep --hybrid` is run against a real embedding model, and keyword search alone still returns passages for questions the handbook cannot answer, so those rely on the drafter declining.
 
 ## How coding assistants helped
 
-I designed and built UniHelp, wrote evaluation cases, and reviewed the results and failure traces myself. I used coding assistants as collaborators for implementation, debugging, and drafting additional test cases.
+**What I did.** I chose the problem and the division of work: the model interprets, Python applies policy, staff approve. I decided what to measure and wrote the [30 resident-message cases](evals/resident-message-cases.json) and their expected outcomes by hand.
+
+**What the assistants did.** Wrote much of the implementation and unit tests from those designs, drafted the remaining synthetic eval cases, helped assign the judge's reference labels, and ran the hosted reruns.
+
+**What I checked myself.** I reviewed every case and expected outcome in the assistant-drafted datasets. I read the failing traces before accepting any fix, and each fix in the [failure log](docs/failures.md) links the trace and the rerun that I compared. The numbers in this README come from the result files in [evals/results](evals/results/README.md).
 
 ## Submission links
 

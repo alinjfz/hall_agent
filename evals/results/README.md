@@ -18,6 +18,7 @@ The historical artifacts predate the v2 dataset and were checked in on 2026-11-0
 | [baseline-hosted-chase.json](baseline-hosted-chase.json) | Hosted chase comparison, pinned original agent | `3668279`; Qwen 3.5 9B, 2026-11-09 | Three selected cases × three trials |
 | [current-hosted-chase.json](current-hosted-chase.json) | Hosted chase comparison, current graph | Polish working tree on `534a22a`; Qwen 3.5 9B, 2026-11-09 | Three selected cases × three trials |
 | [current-hosted-curated.json](current-hosted-curated.json) | Hosted curated smoke with guidance | Polish working tree on `534a22a`; Qwen 3.5 9B, 2026-11-09 | One case × three trials |
+| [vertex-safety-holdout.json](vertex-safety-holdout.json) | Live safety holdout | `9b4b811` working tree; Gemini 3.1 Flash-Lite, 2026-11-10 | 50 cases × three trials, local traces. Replaces a run discarded for provider rate limiting |
 
 The two chase ablation arms share a fingerprint. Two handbook section labels were corrected afterwards for the full v2 run; the report and job inputs were unchanged.
 
