@@ -6,7 +6,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from langgraph.types import Command
 from langsmith import traceable, tracing_context
-from langsmith.utils import tracing_is_enabled
+from langsmith.utils import get_tracer_project, tracing_is_enabled
 
 from unihelp.context import search_rules
 from unihelp.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, retrieve_context, revision_thread
@@ -14,7 +14,7 @@ from unihelp.models import triage_model
 from unihelp.policy import build_proposal
 from unihelp.proposals import parse_proposal
 from unihelp.store import ReviewError
-from unihelp.tracing import trace_client
+from unihelp.tracing import trace_client, trace_project_id
 
 
 def process_pending(store):
@@ -93,6 +93,7 @@ def feedback(report, version, value, reviewer_id):
     try:
         trace_client().create_feedback(
             report["trace_id"], "staff_review", value=value,
+            session_id=trace_project_id(get_tracer_project()),
             feedback_id=uuid5(NAMESPACE_URL, f"{report['trace_id']}:{version}:{value}"),
             source_info={"reviewer_id": reviewer_id or "staff"},
         )

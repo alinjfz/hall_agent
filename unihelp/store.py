@@ -403,6 +403,17 @@ class Store:
             rows = db.execute("SELECT * FROM report_activity WHERE report_id=? ORDER BY id DESC", (report_id,))
             return [dict(row) | {"details": json.loads(row["details"])} for row in rows]
 
+    def delete_ticket_message(self, report_id, message_id):
+        with self.transaction(write=True) as db:
+            updated = db.execute("""UPDATE report_activity
+                SET details=json_set(json_remove(details, '$.body'), '$.deleted_at', ?)
+                WHERE id=? AND report_id=? AND event IN ('conversation_message', 'reply_approved', 'emergency_reply')
+                AND json_extract(details, '$.deleted_at') IS NULL
+                AND EXISTS (SELECT 1 FROM reports WHERE id=report_activity.report_id AND deleted_at IS NULL)""",
+                                 (self.clock().isoformat(), message_id, report_id))
+            if updated.rowcount != 1:
+                raise ReviewError("This message is no longer available.")
+
     def add_ticket_message(self, report_id, author, body, *, draft_version=None, decline=False, reviewer_id=None):
         body = clean_report_text(body)
         if (author not in {"resident", "staff"} or (decline and draft_version is None)

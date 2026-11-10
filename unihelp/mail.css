@@ -47,6 +47,21 @@
 .st-key-header-actions [data-testid="stPopoverButton"] > div > [aria-hidden="true"] {
     display: none;
 }
+[class*="st-key-ticket-message-menu-"] [data-testid="stPopoverButton"] {
+    width: 1.5rem;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    min-height: 1.5rem;
+    padding: 0;
+    display: grid;
+    place-items: center;
+}
+[class*="st-key-ticket-message-menu-"] [data-testid="stPopoverButton"] > div {
+    margin: 0;
+}
+[class*="st-key-ticket-message-menu-"] [data-testid="stPopoverButton"] > div > [aria-hidden="true"] {
+    display: none;
+}
 .st-key-workspace-nav button {
     min-width: clamp(4rem, 8vw, 7.5rem);
     min-height: 2.5rem;

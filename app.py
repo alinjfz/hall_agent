@@ -486,19 +486,35 @@ def show_conversation(report, events):
     st.markdown("#### Conversation")
     messages = [{"author": "resident", "body": report["message"], "at": report["received_at"]}]
     messages.extend(
-        event["details"] | {"at": event["at"]} for event in reversed(events)
+        event["details"] | {"at": event["at"], "id": event["id"]} for event in reversed(events)
         if event["event"] in {"conversation_message", "reply_approved", "emergency_reply"}
+        and not event["details"].get("deleted_at")
     )
-    for index, message in enumerate(messages):
+    for message in messages:
+        message_id = message.get("id")
         resident = message["author"] == "resident"
         author = "Resident" if resident else "Staff"
         side = "left" if resident else "right"
         avatar = ":material/person:" if resident else ":material/support_agent:"
-        with st.container(horizontal=True, horizontal_alignment=side, key=f"ticket-bubble-{side}-{index}"):
+        with st.container(horizontal=True, horizontal_alignment=side,
+                          key=f"ticket-bubble-{side}-{report_id}-{message_id}"):
             with st.chat_message(author, avatar=avatar, width="content"):
                 st.text(message["body"])
                 when = london_time(message["at"]) if message["at"] else "Time unavailable"
-                st.caption(f"{author} · {when}")
+                with st.container(horizontal=True, horizontal_alignment="distribute",
+                                  vertical_alignment="center", gap="small"):
+                    st.caption(f"{author} · {when}")
+                    if message_id is not None:
+                        with st.popover("", icon=":material/more_horiz:", type="tertiary",
+                                        help="Message actions", key=f"ticket-message-menu-{message_id}"):
+                            if st.button("Delete message", icon=":material/delete:",
+                                         key=f"delete-ticket-message-{message_id}"):
+                                try:
+                                    store.delete_ticket_message(report_id, message_id)
+                                    st.toast("Message deleted.")
+                                    st.rerun()
+                                except ReviewError as exc:
+                                    st.error(str(exc))
 
     with st.expander("Add a message"):
         with st.form(f"ticket-message-{report_id}", clear_on_submit=True, border=False):

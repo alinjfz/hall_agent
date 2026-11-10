@@ -27,3 +27,8 @@ def anonymize(value):
 @lru_cache(maxsize=1)
 def trace_client():
     return Client(anonymizer=anonymize)
+
+
+@lru_cache(maxsize=1)
+def trace_project_id(project_name):
+    return trace_client().read_project(project_name=project_name).id
