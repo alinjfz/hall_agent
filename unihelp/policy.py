@@ -110,7 +110,10 @@ def repair_proposal(report, fitting, other_works, rule, category="lighting", *, 
     if report["location"].endswith(("kitchen", "landing")):
         labels.insert(0, "communal_area")
     proposal = {"kind": "create", "rule": rule, "fitting": fitting, "labels": labels, "category": category,
-                "priority": terms["priority"], "days": terms["days"]}
+                "priority": terms["priority"], "days": terms["days"],
+                "reply": f"Thank you for reporting this {category} fault. A repair proposal is ready for staff review. "
+                         f"The policy repair target is {terms['days']} "
+                         f"{'day' if terms['days'] == 1 else 'days'}. Staff will confirm the repair details."}
     if terms.get("clock") == "confirmed" and confirmed_at is not None:
         target = confirmed_at.astimezone(timezone.utc) + timedelta(days=terms["days"])
         proposal["policy_deadline"] = target.isoformat()

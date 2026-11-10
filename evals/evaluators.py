@@ -52,7 +52,8 @@ def tools_called(outputs):
 
 def tool_order(outputs):
     events = outputs["trajectory"]["steps"]
-    interpretation = next((i for i, name in enumerate(events) if name in {"interpretation_pass", "interpret"}), None)
+    interpretation = next((i for i, name in enumerate(events)
+                           if name in {"interpretation_pass", "interpret", "assess_report"}), None)
     if interpretation is None or "apply_policy" not in events:
         return None
     policy = events.index("apply_policy")

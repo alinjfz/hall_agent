@@ -12,6 +12,43 @@ from unihelp.store import ReviewError, Store
 from unihelp.workflow import review, triage
 
 
+@pytest.mark.parametrize("assessment", ["routine", "uncertain", "conflicting"])
+def test_combined_assessment_uses_independent_safety_only_when_needed(tmp_path, monkeypatch, assessment):
+    from unihelp import workflow
+    from unihelp.interpretation import Interpretation
+
+    routine = assessment == "routine"
+    message = "My radiator is cold." if routine else "My radiator is cold and I can smell gas."
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 5", "Repair", message)
+    calls = []
+
+    class Model:
+        def with_structured_output(self, schema, **kwargs):
+            calls.append(schema)
+            if schema is graph.CombinedAssessment:
+                return RunnableLambda(lambda _: graph.CombinedAssessment(
+                    safety=SafetyCheck(hazard=None, evidence=None,
+                                       assessment="uncertain" if assessment == "uncertain" else "not_current"),
+                    interpretation=Interpretation(intent="new", category="heating", fitting="radiator",
+                                                  evidence="My radiator is cold"),
+                ))
+            assert schema is SafetyCheck
+            return RunnableLambda(lambda _: SafetyCheck(hazard="gas", evidence="I can smell gas.",
+                                                        assessment="current"))
+
+    monkeypatch.setattr(workflow, "triage_model", lambda **_: Model())
+    proposal = triage(store, report_id)
+    assert not store.jobs()
+    if routine:
+        assert calls == [graph.CombinedAssessment]
+        assert proposal["kind"] == "create" and "policy repair target is 2 days" in proposal["reply"]
+    else:
+        assert calls == [graph.CombinedAssessment, SafetyCheck]
+        assert proposal["kind"] == "manual" and proposal["urgency"] == "emergency"
+
+
 def test_isolated_detector_chirp_needs_no_model_call(tmp_path):
     store = Store(tmp_path / "workspace.sqlite3")
     store.seed(samples=False)
@@ -244,9 +281,20 @@ def test_reply_rejects_invented_facts(body, sources, valid):
     assert grounded_reply(body, sources, ["chasing"], job) is valid
 
 
-def test_transient_model_failure_retries_without_creating_a_job(tmp_path):
+def test_transient_model_failure_retries_with_one_deadline_without_creating_a_job(tmp_path, monkeypatch):
     from unihelp.models import TransientModelError
     from unihelp.interpretation import Interpretation
+
+    deadlines = []
+    delays = []
+    interpret_report = graph.interpret_report
+
+    def track_deadline(factory, report, context, expires):
+        deadlines.append(expires)
+        return interpret_report(factory, report, context, expires)
+
+    monkeypatch.setattr(graph, "interpret_report", track_deadline)
+    monkeypatch.setattr(graph, "sleep", delays.append)
 
     class FlakyModel:
         calls = 0
@@ -268,6 +316,8 @@ def test_transient_model_failure_retries_without_creating_a_job(tmp_path):
     proposal = triage(store, report_id, model=FlakyModel())
     assert proposal["kind"] == "create"
     assert store.report(report_id)["triage_attempts"] == 2
+    assert len(deadlines) == 2 and deadlines[0] == deadlines[1]
+    assert delays == [0.3]
     assert not store.jobs()
 
 
@@ -288,7 +338,7 @@ def test_negated_fitting_never_matches_the_lone_job(tmp_path):
 
 
 
-def test_staff_can_review_after_publish_checkpoint_is_interrupted(tmp_path, monkeypatch):
+def test_staff_can_review_after_proposal_save_is_interrupted(tmp_path, monkeypatch):
     from tests.scripted_model import scripted
 
     store = Store(tmp_path / "workspace.sqlite3")
@@ -313,6 +363,40 @@ def test_staff_can_review_after_publish_checkpoint_is_interrupted(tmp_path, monk
     assert receipt["action"] == "created_job"
     assert review(store, report_id, proposal_version, "approve") == receipt
     assert len(store.jobs()) == 1
+
+
+def test_saved_handbook_reply_is_not_redrafted_after_interrupted_save(tmp_path, monkeypatch):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id, report = question_report(store)
+    model = scripted(report["location"], "question", {
+        "intent": "question", "evidence": report["message"],
+    }, draft={"body": "Use the quiet hours posted in your building.", "section_ids": ["quiet-hours"]})
+    save = store.save_proposal
+    draft = graph.draft_with_search
+    calls = []
+
+    def tracked_draft(*args, **kwargs):
+        calls.append(True)
+        return draft(*args, **kwargs)
+
+    def interrupted(*args, **kwargs):
+        save(*args, **kwargs)
+        raise RuntimeError("Stopped after SQLite committed")
+
+    monkeypatch.setattr(graph, "draft_with_search", tracked_draft)
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "save_proposal", interrupted)
+        with pytest.raises(RuntimeError, match="Stopped after SQLite committed"):
+            triage(store, report_id, model=model, draft_replies=True)
+
+    saved = store.report(report_id)
+    assert saved["proposal"]["reply_sources"] == ["quiet-hours"]
+    assert review(store, report_id, saved["version"], "acknowledge")["action"] == "answer"
+    assert len(calls) == 1
+    assert sum(row["event"] == "proposal_ready" for row in store.activity(report_id)) == 1
 
 
 def test_interpretation_is_one_call_without_tools(tmp_path):

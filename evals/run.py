@@ -116,7 +116,7 @@ def read_trace(run, topics, expected_sections, provider_calls):
                 evidence.extend(interpretation[key] for key in ("evidence", "lighting_evidence")
                                 if interpretation.get(key))
                 evidence.extend(interpretation.get("issues") or [])
-        if node.name == "check_safety" and (quote := (node.outputs or {}).get("safety_evidence")):
+        if node.name in {"check_safety", "assess_report"} and (quote := (node.outputs or {}).get("safety_evidence")):
             evidence.append(quote)
     passes = [node for node in runs if node.name == "interpretation_pass"]
     state_errors = [node.outputs.get("model_error") for node in runs if node.name == "interpret" and node.outputs]
@@ -161,9 +161,10 @@ def evaluate_case(inputs, *, topics, expected_sections=(), passes, hosted, model
                                  for row in store.activity(report_id)))
         signals = safety_signals(inputs["message"])
         nodes = {node.name: node.outputs or {} for node in descendants(root)}
-        interpret = nodes.get("interpret", {})
+        interpret = nodes.get("interpret", nodes.get("assess_report", {}))
         # The pipeline graph retrieves after interpretation; the drafter may add passages.
-        sections = next((nodes[name]["sections"] for name in ("draft_reply", "retrieve_handbook", "interpret")
+        section_nodes = ("prepare_proposal_for_review", "draft_reply", "retrieve_handbook", "interpret")
+        sections = next((nodes[name]["sections"] for name in section_nodes
                          if nodes.get(name, {}).get("sections")), [])
         return {
             "route": proposal["kind"], "urgency": proposal.get("urgency"),

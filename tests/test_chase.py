@@ -63,7 +63,7 @@ def test_chase_review_and_replay(monkeypatch):
 
         nodes = list(walk(roots[0]))
         print([(node.name, node.run_type) for node in nodes])
-        assert {"load_context", "retrieve_handbook", "search_handbook", "apply_policy", "await_review"} <= {
+        assert {"load_report_and_context", "retrieve_handbook", "search_handbook", "apply_policy", "await_review"} <= {
             node.name for node in nodes}
         search = next(node for node in nodes if node.name == "search_handbook")
         assert search.run_type == "retriever" and "ceiling light" in str(search.inputs)

@@ -54,7 +54,7 @@ def _triage(store, report, model=None, draft_replies=None, deadlines=ModelDeadli
     state = graph_for(store).invoke(
         {"report_id": report["id"], "expected_version": report["version"], "expected_claim": report["triage_claim"]},
         config, context=Context(store, factory, draft_replies=model is None if draft_replies is None else draft_replies,
-                                deadlines=deadlines),
+                                deadlines=deadlines, combined_assessment=model is None),
         durability="sync")
     return state["proposal"]
 
@@ -71,7 +71,8 @@ def _decision(store, report, version, action, **values):
     config = {"configurable": {"thread_id": thread_id}}
     graph, context = graph_for(store), Context(store)
     snapshot = graph.get_state(config)
-    if not snapshot.values:
+    if not snapshot.values or (not snapshot.interrupts and not snapshot.next and "version" not in snapshot.values):
+        # A proposal saved by an older graph can outlive its removed publish node.
         graph.invoke({"report_id": report["id"], "existing": True}, config, context=context, durability="sync")
     elif not snapshot.interrupts and snapshot.next:
         graph.invoke(None, config, context=context, durability="sync")
