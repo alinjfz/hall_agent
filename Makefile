@@ -1,7 +1,7 @@
 PYTHON ?= .venv/bin/python
 BOOTSTRAP_PYTHON ?= python3
 
-.PHONY: setup test eval eval-safety run studio
+.PHONY: setup test eval eval-safety eval-html run studio
 setup:
 	$(BOOTSTRAP_PYTHON) -m venv .venv
 	$(PYTHON) -m pip install -r requirements.txt -r requirements-dev.txt
@@ -14,6 +14,10 @@ eval:
 
 eval-safety:
 	$(PYTHON) -m evals.run --suite safety $(EVAL_ARGS)
+
+# make eval-html EVAL_ARGS="--results evals/results/current-triage.json"
+eval-html:
+	$(PYTHON) -m evals.visualize $(EVAL_ARGS)
 
 run:
 	$(PYTHON) -m streamlit run app.py

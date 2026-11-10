@@ -1,0 +1,26 @@
+{
+  "judge_provider": "openai",
+  "judge_model": "gpt-6-luna",
+  "split": "test",
+  "grounded": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 1.0,
+    "bad_total": 2,
+    "good_total": 2,
+    "disagreements": []
+  },
+  "no_unsupported_promise": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 1.0,
+    "bad_total": 1,
+    "good_total": 3,
+    "disagreements": []
+  },
+  "answers_resident": {
+    "bad_replies_caught": 1.0,
+    "good_replies_passed": 1.0,
+    "bad_total": 1,
+    "good_total": 3,
+    "disagreements": []
+  }
+}

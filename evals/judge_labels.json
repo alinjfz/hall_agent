@@ -1,0 +1,226 @@
+[
+  {
+    "id": "complaint-original",
+    "split": "dev",
+    "report": "Who should I contact to make a complaint about how my maintenance issue was handled?",
+    "reply": "To make a complaint about how your maintenance issue was handled, you should contact your building manager. Please include the original report and any job number you were provided.",
+    "sections": [
+      {
+        "id": "contacting-staff",
+        "title": "Contacting staff and raising complaints",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+      },
+      {
+        "id": "urgent-hazards",
+        "title": "Urgent hazards",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Contact the duty team promptly about loss of power to the whole flat, signs of electrical danger, a dark shared stairwell, unsafe shared routes, broken glass on a shared route, structural danger or someone trapped in a lift. A single fitting that stops working without signs of danger can usually be reviewed as a repair. Say what you can see and which area is affected."
+      }
+    ],
+    "job": null,
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "complaint-invented-form",
+    "split": "dev",
+    "report": "Who should I contact to make a complaint about how my maintenance issue was handled?",
+    "reply": "To make a complaint about how your maintenance issue was handled, you should contact your building manager. Please include the original report and any job number you were provided. Residence policy also requires you to submit form JC-17.",
+    "sections": [
+      {
+        "id": "contacting-staff",
+        "title": "Contacting staff and raising complaints",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+      },
+      {
+        "id": "urgent-hazards",
+        "title": "Urgent hazards",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Contact the duty team promptly about loss of power to the whole flat, signs of electrical danger, a dark shared stairwell, unsafe shared routes, broken glass on a shared route, structural danger or someone trapped in a lift. A single fitting that stops working without signs of danger can usually be reviewed as a repair. Say what you can see and which area is affected."
+      }
+    ],
+    "job": null,
+    "labels": {
+      "grounded": false,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "complaint-guaranteed-response",
+    "split": "dev",
+    "report": "Who should I contact to make a complaint about how my maintenance issue was handled?",
+    "reply": "To make a complaint about how your maintenance issue was handled, you should contact your building manager. Please include the original report and any job number you were provided. Residence policy guarantees a response within 24 hours.",
+    "sections": [
+      {
+        "id": "contacting-staff",
+        "title": "Contacting staff and raising complaints",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+      },
+      {
+        "id": "urgent-hazards",
+        "title": "Urgent hazards",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Contact the duty team promptly about loss of power to the whole flat, signs of electrical danger, a dark shared stairwell, unsafe shared routes, broken glass on a shared route, structural danger or someone trapped in a lift. A single fitting that stops working without signs of danger can usually be reviewed as a repair. Say what you can see and which area is affected."
+      }
+    ],
+    "job": null,
+    "labels": {
+      "grounded": false,
+      "no_unsupported_promise": false,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "complaint-acknowledgment-only",
+    "split": "dev",
+    "report": "Who should I contact to make a complaint about how my maintenance issue was handled?",
+    "reply": "Thank you for raising this. I understand that this has been frustrating.",
+    "sections": [
+      {
+        "id": "contacting-staff",
+        "title": "Contacting staff and raising complaints",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Use your residence's published contact details. If reception is closed, use the published out-of-hours contact. For an unresolved maintenance complaint, contact your building manager with the original report and any job number."
+      },
+      {
+        "id": "urgent-hazards",
+        "title": "Urgent hazards",
+        "matched": [
+          "lexical"
+        ],
+        "text": "Contact the duty team promptly about loss of power to the whole flat, signs of electrical danger, a dark shared stairwell, unsafe shared routes, broken glass on a shared route, structural danger or someone trapped in a lift. A single fitting that stops working without signs of danger can usually be reviewed as a repair. Say what you can see and which area is affected."
+      }
+    ],
+    "job": null,
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": false
+    }
+  },
+  {
+    "id": "heating-target-with-caveat",
+    "split": "test",
+    "report": "What is the target for getting my radiator fixed, and is that a guaranteed completion time?",
+    "reply": "The recorded target for job 205 is noon UTC on 12 November 2026. That is a repair target, not a guaranteed completion time.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 205,
+      "fitting": "radiator",
+      "category": "heating",
+      "priority": "P2",
+      "status": "open",
+      "deadline": "2026-11-12T12:00:00Z"
+    },
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "heating-invented-policy",
+    "split": "test",
+    "report": "What is the target for getting my radiator fixed, and is that a guaranteed completion time?",
+    "reply": "The recorded target for job 205 is noon UTC on 12 November 2026. That is a repair target, not a guaranteed completion time. The handbook also requires a supervisor to inspect every radiator repair.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 205,
+      "fitting": "radiator",
+      "category": "heating",
+      "priority": "P2",
+      "status": "open",
+      "deadline": "2026-11-12T12:00:00Z"
+    },
+    "labels": {
+      "grounded": false,
+      "no_unsupported_promise": true,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "heating-target-as-guarantee",
+    "split": "test",
+    "report": "What is the target for getting my radiator fixed, and is that a guaranteed completion time?",
+    "reply": "The recorded target for job 205 is noon UTC on 12 November 2026. Under residence policy, that target guarantees completion by then.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 205,
+      "fitting": "radiator",
+      "category": "heating",
+      "priority": "P2",
+      "status": "open",
+      "deadline": "2026-11-12T12:00:00Z"
+    },
+    "labels": {
+      "grounded": false,
+      "no_unsupported_promise": false,
+      "answers_resident": true
+    }
+  },
+  {
+    "id": "heating-job-number-only",
+    "split": "test",
+    "report": "What is the target for getting my radiator fixed, and is that a guaranteed completion time?",
+    "reply": "Your radiator repair is recorded as job 205.",
+    "sections": [
+      {
+        "id": "repair-targets",
+        "title": "Repair targets",
+        "text": "For fixed lighting, another working fixed light in the same room means P3 with a 7 day target. If no fixed light works in that room, use P2 with a 1 day target from when that fact was first confirmed. A torch, desk lamp or working light in another room does not count. Staff may ask you to confirm whether a second fixed light works.\n\nVerified heating faults have a P2, 2 day target. Verified appliance faults have a P3, 7 day target. These targets guide repairs. The confirmed job record shows the target for your repair."
+      }
+    ],
+    "job": {
+      "id": 205,
+      "fitting": "radiator",
+      "category": "heating",
+      "priority": "P2",
+      "status": "open",
+      "deadline": "2026-11-12T12:00:00Z"
+    },
+    "labels": {
+      "grounded": true,
+      "no_unsupported_promise": true,
+      "answers_resident": false
+    }
+  }
+]

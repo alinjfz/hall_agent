@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from evals.judge import RUBRICS, judge_reply
+from evals.judge import RUBRICS, judge_model_id, judge_reply
 
 
 def calibration(rows):
@@ -34,6 +34,10 @@ def main():
     cases = [row for row in json.loads(args.labels.read_text()) if row["split"] == args.split]
     if not cases:
         parser.error("No independently labelled replies in that split.")
+    try:
+        model = judge_model_id()
+    except ValueError as exc:
+        parser.error(str(exc))
     rows = []
     for case in cases:
         if set(case["labels"]) != set(RUBRICS) or any(type(label) is not bool for label in case["labels"].values()):
@@ -42,7 +46,8 @@ def main():
             outcome = judge_reply(criterion, report=case["report"], reply=case["reply"],
                                   sections=case["sections"], job=case.get("job"))
             rows.append({"id": case["id"], "criterion": criterion, "label": label, **outcome.model_dump()})
-    output = json.dumps(calibration(rows), indent=2) + "\n"
+    output = json.dumps({"judge_provider": "openai", "judge_model": model, "split": args.split,
+                         **calibration(rows)}, indent=2) + "\n"
     if args.output:
         args.output.write_text(output)
     print(output, end="")

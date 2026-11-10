@@ -27,6 +27,23 @@ Vertex evals default to one worker and space request starts at least two seconds
 
 The output records nomination counts, median latency and total model calls. Nomination is scored before Python verifies the IDs and does not gate route or safety checks.
 
+## HTML eval viewer
+
+Generate an offline preview of the checked-in triage, safety and curated suites before running a model. The overview shows coverage by slice, expected route and urgency. Search or filter the case explorer, then expand a case to inspect its message, expected outcome, fixture inputs and policy references.
+
+```sh
+make eval-html
+open evals/results/eval-report.html
+```
+
+Pass viewer options through `EVAL_ARGS`. Use `--suite safety` or repeat `--case` to narrow the preview, or use `--curated PATH` to show a specific curated export. To review pass counts, safety and retrieval metrics, and expected versus actual trial outcomes, pass the JSON saved by the runner's `--output` option.
+
+```sh
+make eval-html EVAL_ARGS="--results evals/results/current-triage.json"
+```
+
+Both modes write `evals/results/eval-report.html` by default. Use `--output` to keep separate HTML files.
+
 ## Handbook retrieval
 
 Search is keyword-only until `UNIHELP_EMBEDDING_MODEL` names an embedding model from the selected provider, for example `text-embedding-3-small` for OpenAI or an embedding model loaded in LM Studio. Each result records which half matched it, and the retriever run records `retrieval_mode`.
@@ -54,6 +71,14 @@ make eval EVAL_ARGS="--curated /tmp/unihelp-curated.json --output /tmp/with-guid
 make eval EVAL_ARGS="--curated /tmp/unihelp-curated.json --without-guidance --output /tmp/without-guidance.json"
 ```
 
-## Judge calibration
+## GPT judge
 
-For judge scores, set `UNIHELP_JUDGE_MODEL=google/gemma-4-e4b` and pass `--judge`. Have a reviewer label drafts before looking at judge scores. The calibration input is a JSON list with `id`, `split` (`dev` or `test`), `report`, `reply`, `sections`, `job` and three Boolean `labels`: `grounded`, `no_unsupported_promise`, and `answers_resident`. Tune on dev, then run `.venv/bin/python -m evals.calibrate labels.json --split test`.
+Configure Vertex with `GOOGLE_CLOUD_PROJECT` and either `GOOGLE_API_KEY` or Application Default Credentials. Set `OPENAI_API_KEY` for the separate judge. If your existing `.env` names an LM Studio judge, change `UNIHELP_JUDGE_MODEL` to `gpt-6-luna` or remove the override to use the default.
+
+```sh
+make eval EVAL_ARGS="--agent vertex --judge --case question-complaint-contact --output /tmp/unihelp-gpt-judge.json"
+```
+
+The GPT judge receives the synthetic resident report, draft, retrieved passages and job record. Each rubric returns a binary score and a short explanation. Trials without a model draft have no numeric judge score. The JSON records both model IDs and per-trial verdicts. Add `--langsmith hosted` to send the experiment and evaluator feedback to your configured LangSmith project.
+
+For calibration, have a reviewer label drafts before looking at judge scores. The input is a JSON list with `id`, `split` (`dev` or `test`), `report`, `reply`, `sections`, `job` and three Boolean `labels` named `grounded`, `no_unsupported_promise` and `answers_resident`. Tune the rubrics on dev, then run `.venv/bin/python -m evals.calibrate labels.json --split test` to measure how often GPT catches bad replies and passes good ones on held-out examples.

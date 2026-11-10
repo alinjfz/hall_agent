@@ -28,3 +28,6 @@ __pycache__/
 
 # Incomplete live evaluation checkpoints
 /evals/results/*.partial.jsonl
+
+# Generated evaluation viewer
+/evals/results/eval-report.html

@@ -304,7 +304,7 @@ def main():
     parser.add_argument("--deadlines", nargs=3, type=int, metavar=("INTERPRET", "SAFETY", "DRAFT"),
                         help="Stage budgets in seconds. Vertex defaults to 60 45 45 on the current graph.")
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--judge", action="store_true", help="Score drafted replies with the separate LM Studio model")
+    parser.add_argument("--judge", action="store_true", help="Score drafted replies with a separate OpenAI GPT model")
     parser.add_argument("--curated", type=Path, help="Approved holdouts and guidance exported by evals.curation")
     parser.add_argument("--without-guidance", action="store_true")
     parser.add_argument("--against", type=Path, help="Fail when a case regresses from a complete, comparable run")
@@ -363,6 +363,15 @@ def main():
     if args.concurrency < 1:
         parser.error("--concurrency must be positive.")
 
+    judge_metadata = {}
+    if args.judge and not args.sync_only:
+        from evals.judge import RUBRICS, evaluator_for, judge_model_id
+
+        try:
+            judge_metadata = {"judge_provider": "openai", "judge_model": judge_model_id()}
+        except ValueError as exc:
+            parser.error(str(exc))
+
     by_input = {json.dumps(case["inputs"], sort_keys=True): case for case in cases}
     if len(by_input) != len(cases):
         parser.error("Two cases have the same input snapshot.")
@@ -390,9 +399,6 @@ def main():
         *checks, *evaluators.TRAJECTORY, evaluators.intake_urgency, evaluators.retrieval_recall_at_3,
         evaluators.retrieval_hit_at_1)]
     if args.judge:
-        from evals.judge import RUBRICS, evaluator_for, judge_model_id
-        judge_model_id()
-
         def serial_judge(criterion):
             judge = evaluator_for(criterion)
 
@@ -410,7 +416,7 @@ def main():
         upload_results=hosted, blocking=False, metadata={"model": agent, "provider": provider, "passes": args.passes,
                                          "dataset_version": version, "dataset_sha256": fingerprint,
                                          "guidance_examples": len(guidance), "deadline_seconds": deadline_metadata,
-                                         **vertex_metadata},
+                                         **vertex_metadata, **judge_metadata},
     )
     rows = []
     partial_path = args.output.with_suffix(".partial.jsonl") if args.output else None
@@ -429,7 +435,7 @@ def main():
                       "trajectory_checks": values_for(evaluators.TRAJECTORY, example.inputs, actual, expected) if actual else {},
                       "error": bool(run.error or (actual and actual["trajectory"]["failed_interpretation"]))}
             if args.judge:
-                result["judge"] = {grade.key: {"score": grade.score, "reason": grade.comment}
+                result["judge"] = {grade.key: {"score": grade.score, "reason": grade.comment or grade.value}
                                    for grade in row["evaluation_results"]["results"] if grade.key in RUBRICS}
             rows.append(result)
             if progress:
@@ -511,7 +517,7 @@ def main():
                "embedding_model": os.getenv("UNIHELP_EMBEDDING_MODEL") or None,
                "retrieval_recall_at_3_by_origin": {origin: {"mean": mean(scores), "trials": len(scores)}
                                                    for origin, scores in sorted(recall_by_origin.items())},
-               "results": rows, **vertex_metadata}
+               "results": rows, **vertex_metadata, **judge_metadata}
     if vertex_eval:
         summary["vertex_http_429s"] = vertex_rate_limits() - initial_rate_limits
         print(f"Vertex HTTP 429 responses: {summary['vertex_http_429s']}")
