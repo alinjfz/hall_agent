@@ -33,7 +33,7 @@ def is_overdue(job, now):
 RESIDENCE = "Juniper Court"
 FLAT_NUMBER = re.compile(r"^flat\s+(\d+)\b", re.IGNORECASE)
 RETIRED_FLAT = 111
-HANDOFFS = ("escalate", "draft", "create", "job_question", "lighting_question", "plumbing_question", "access_question", "power_question", "split", "answer", "manual")
+HANDOFFS = ("escalate", "draft", "create", "job_question", "lighting_question", "plumbing_question", "access_question", "power_question", "split", "answer", "manual", "spam")
 LABELS = ["communal_area", "ceiling_light", "wall_light"]
 
 
@@ -190,27 +190,11 @@ class Store:
             now = self.clock()
             row = db.execute("""INSERT INTO reports (location,subject,message,received_at) VALUES (?,?,?,?)""",
                              (full_location, subject, message, now.isoformat()))
-            report_id = row.lastrowid
-            self.intake_safety(db, report_id, full_location, message, now)
-            return report_id
-
-    def intake_safety(self, db, report_id, location, message, now):
-        from unihelp.safety import safety_signals
-
-        if not safety_signals(message):
-            return
-        from unihelp.context import retrieve_policy
-        from unihelp.policy import build_proposal
-
-        context = {"policies": retrieve_policy(), "jobs": self.read_jobs(db, location), "examples": [],
-                   "at": now.isoformat()}
-        proposal = build_proposal({"message": message, "location": location}, context, None)
-        db.execute("UPDATE reports SET proposal=?, version=1 WHERE id=?", (json.dumps(proposal), report_id))
-        self.record_activity(db, report_id, "proposal_ready", {"kind": proposal["kind"], "urgency": proposal["urgency"]})
-        self.record_emergency_reply(db, report_id, proposal)
+            return row.lastrowid
 
     def record_emergency_reply(self, db, report_id, proposal):
         if (proposal.get("urgency") == "emergency" and proposal.get("reply")
+                and "unverified_safety" not in proposal.get("signals", [])
                 and not db.execute("SELECT 1 FROM report_activity WHERE report_id=? AND event='emergency_reply'",
                                    (report_id,)).fetchone()):
             self.record_activity(db, report_id, "emergency_reply",
@@ -612,7 +596,7 @@ class Store:
                 action = {"escalate": self.escalate_job, "create": self.create_job,
                           "split": self.split_report}[proposal.kind]
                 result = action(db, report, proposal_data, now)
-            elif decision == "acknowledge" and proposal.kind in {"draft", "answer", "manual"}:
+            elif decision == "acknowledge" and proposal.kind in {"draft", "answer", "manual", "spam"}:
                 result = {"action": proposal.kind}
             elif decision == "technician_handoff" and urgent_manual:
                 result = {"action": "technician_handoff"}
@@ -635,6 +619,5 @@ class Store:
             child = db.execute("""INSERT INTO reports (location,subject,message,received_at,parent_report_id)
                 VALUES (?,?,?,?,?)""", (report["location"], f"Report #{report['id']} · Issue {index}",
                                         issue, report["received_at"] or now.isoformat(), report["id"])).lastrowid
-            self.intake_safety(db, child, report["location"], issue, now)
             children.append(child)
         return {"action": "split_report", "report_ids": children}

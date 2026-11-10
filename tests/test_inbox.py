@@ -101,8 +101,10 @@ def test_inbox_review_and_job_lifecycle():
             assert all(job["escalated_at"] is None for job in store.jobs())
 
             report = store.report(7)
-            proposal = workflow.build_proposal(report, workflow.retrieve_context(store, report), None)
-            store.save_proposal(report, proposal)
+            safety_model = scripted(report["location"], "lighting", {"intent": "manual"}, safety={
+                "assessment": "current", "hazard": "building_hazard", "evidence": "sparks coming from the fitting",
+            })
+            original_triage(store, 7, model=safety_model)
             ui.radio(key="message-list").set_value(7).run(timeout=30)
             click(ui, "Record technician handoff")
             assert store.report(7)["result"]["action"] == "technician_handoff"

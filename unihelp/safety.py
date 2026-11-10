@@ -8,7 +8,20 @@ class SafetyCheck(BaseModel):
     hazard: Literal["fire", "gas", "fire_equipment", "building_hazard", "dark_route",
                     "unsafe_door", "lockout", "identifiable_key"] | None
     evidence: str | None
-    assessment: Literal["current", "not_current", "uncertain"] | None = None
+    assessment: Literal["current", "not_current", "uncertain", "spam"] | None = None
+
+
+def explicit_retraction(message, evidence):
+    if message.rstrip().endswith(evidence) and re.fullmatch(
+        r"(?:sorry[, ]+)?(?:i (?:was|am) joking|i['’]m joking|just kidding|it was (?:a joke|a prank))[.!\s]*",
+        evidence.strip(), re.I,
+    ):
+        return True
+    disclaimer = evidence.rstrip(" ,.!:;")
+    leading = message.lstrip()
+    return (leading.startswith(evidence)
+            and bool(re.fullmatch(r"i(?: am|['’]m) not being serious", disclaimer, re.I))
+            and bool(re.match(r"[\s,.!:;]", leading[len(disclaimer):])))
 
 
 def private_lighting_fault(location, message, evidence):
@@ -20,10 +33,10 @@ def private_lighting_fault(location, message, evidence):
     )
 
 
-# Explicit signals take precedence over routine triage, even without a model.
+# Explicit signals support the staff fallback when model safety screening fails.
 SIGNALS = {
     "fire": (
-        r"\b(?:on fire|flames?|(?:frying pan|pan|oven|hob) (?:has )?ignited|"
+        r"\b(?:on fire|there (?:is|'s) a fire|flames?|(?:frying pan|pan|oven|hob) (?:has )?ignited|"
         r"(?:there(?: is|'s)|I (?:see|smell)) smoke|"
         r"smoke (?:is )?(?:coming|pouring|in (?:the |my ))|fire (?:has )?(?:started|broken out)|"
         r"(?:fire|smoke) alarm (?:is )?(?:going off|sounding|ringing|went off))\b"

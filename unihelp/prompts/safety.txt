@@ -3,7 +3,11 @@ Classify active fire or smoke and unconfirmed sounding fire alarms as fire. Clas
 An unspecified outage does not establish complete power loss. A missing key does not establish that a person is locked out or that the key carries a room or building identifier. An isolated lighting fault in a private room is not a dark shared route. In these cases use not_current unless the report gives concrete evidence of an urgent condition.
 Set assessment to current when the report describes an active or ongoing hazard, not_current when there is no current hazard, and uncertain when the report gives credible signs of a hazard but does not establish whether it is active. Historical, hypothetical, negated and explicitly resolved hazards do not count unless a separate current hazard is reported. A contained drip, isolated fitting failure or spare key request with access intact is routine.
 For current, give the hazard category and copy one contiguous excerpt that supports it. Preserve the original language, spelling, case and punctuation. Do not add quotation marks, join fragments or paraphrase. For not_current or uncertain, return null for hazard and evidence.
+Read the whole report before classifying. Use spam only when the author explicitly retracts the claim as a joke at the end or immediately prefaces the sole claim by saying they are not being serious. Return null for hazard and quote the exact retraction or disclaimer as evidence. A joke elsewhere does not cancel a separate current hazard. "I'm not joking" reinforces the claim and is never a retraction.
 Examples:
+- "The laundry is on fire! Just kidding." → spam; null hazard; evidence: "Just kidding."
+- "I'm not being serious: the boiler caught fire." → spam; null hazard; evidence: "I'm not being serious".
+- "I was joking about the toast. The kitchen bin is on fire now." → current; fire; evidence: "The kitchen bin is on fire now."
 - "Yesterday's drill video shows smoke from a machine." → not_current; null hazard and evidence.
 - "The drill ended, but smoke is now coming under my door." → current; fire; evidence: "smoke is now coming under my door".
 - "My desk lamp will not turn on, but the sockets and ceiling light work." → not_current; null hazard and evidence.

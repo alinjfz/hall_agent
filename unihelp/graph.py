@@ -34,7 +34,7 @@ from unihelp.proposals import parse_proposal
 from unihelp.replies import ReplyDraft, grounded_reply
 from unihelp.review_policy import revise_proposal
 from unihelp.retrieval import search_handbook
-from unihelp.safety import SafetyCheck, private_lighting_fault, safety_signals
+from unihelp.safety import SafetyCheck, explicit_retraction, private_lighting_fault, safety_signals
 from unihelp.store import ReviewError, Store
 from unihelp.tools import search_policy
 
@@ -42,7 +42,7 @@ PROMPTS = Path(__file__).with_name("prompts")
 PROMPT = (PROMPTS / "interpret.txt").read_text()
 SAFETY_PROMPT = (PROMPTS / "safety.txt").read_text()
 DRAFT_PROMPT = (PROMPTS / "draft_reply.txt").read_text()
-GRAPH_VERSION = "pipeline-rag-1"
+GRAPH_VERSION = "pipeline-rag-2"
 PROMPT_HASH = sha256("\0".join((PROMPT, SAFETY_PROMPT, DRAFT_PROMPT)).encode()).hexdigest()
 MAX_ATTEMPTS = 3
 MAX_TOOL_CALLS = 2
@@ -81,9 +81,9 @@ class State(TypedDict, total=False):
     expected_claim: str | None
     report: dict
     context: dict
-    signals: list[str]
     safety_review: list[str]
     safety_evidence: str | None
+    spam_evidence: str
     interpretation: dict | None
     nominated_job_ids: list[int] | None
     proposal: dict
@@ -230,10 +230,9 @@ def build_graph():
                     "version": report["version"], "existing": True}
         return {"report_id": report_id, "report": report}
 
-    def safety_gate(state: State, runtime: Runtime[Context]):
+    def begin_interpretation(state: State, runtime: Runtime[Context]):
         # The interpretation deadline lives in state so that retries share one budget.
-        return {"signals": sorted(safety_signals(state["report"]["message"])),
-                "expires": time() + (runtime.context or Context()).deadlines.interpretation}
+        return {"expires": time() + (runtime.context or Context()).deadlines.interpretation}
 
     def load_context(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         context = retrieve_context(store_for_run(config, runtime), state["report"])
@@ -242,10 +241,6 @@ def build_graph():
             run.add_metadata({"graph_version": GRAPH_VERSION, "prompt_sha256": PROMPT_HASH,
                               "policy_revisions": {rule["id"]: rule["revision"] for rule in context["policies"].values()}})
         return {"context": context}
-
-    def urgent(state: State):
-        proposal = build_proposal(state["report"], state["context"], None, signals=state["signals"])
-        return {"proposal": dump_proposal(proposal)}
 
     def check_safety(state: State, runtime: Runtime[Context]):
         report = state["report"]
@@ -259,15 +254,18 @@ def build_graph():
             check = SafetyCheck.model_validate(result)
         except Exception as exc:
             logging.warning("Safety screening unavailable for report %s (%s)", state["report_id"], type(exc).__name__)
-            return {"safety_review": ["unverified_safety"], "safety_evidence": None}
-        if check.hazard is None and check.assessment in (None, "not_current") and not (check.evidence or "").strip():
-            return {"safety_review": [], "safety_evidence": None}
-        if (check.hazard and check.assessment in (None, "current")
-                and check.evidence and check.evidence.strip() and check.evidence in message):
-            if check.hazard == "dark_route" and private_lighting_fault(report["location"], message, check.evidence):
+        else:
+            if check.hazard is None and check.assessment in (None, "not_current") and not (check.evidence or "").strip():
                 return {"safety_review": [], "safety_evidence": None}
-            return {"safety_review": [check.hazard], "safety_evidence": check.evidence}
-        return {"safety_review": ["unverified_safety"], "safety_evidence": None}
+            if check.evidence and check.evidence.strip() and check.evidence in message:
+                if (check.hazard is None and check.assessment == "spam"
+                        and explicit_retraction(message, check.evidence)):
+                    return {"safety_review": [], "safety_evidence": check.evidence, "spam_evidence": check.evidence}
+                if check.hazard and check.assessment in (None, "current"):
+                    if check.hazard == "dark_route" and private_lighting_fault(report["location"], message, check.evidence):
+                        return {"safety_review": [], "safety_evidence": None}
+                    return {"safety_review": [check.hazard], "safety_evidence": check.evidence}
+        return {"safety_review": sorted(safety_signals(message) | {"unverified_safety"}), "safety_evidence": None}
 
     def interpret(state: State, config: RunnableConfig, runtime: Runtime[Context]):
         if context_issue(state["context"]):
@@ -302,11 +300,13 @@ def build_graph():
         return {"sections": sections}
 
     def policy(state: State):
-        result = Interpretation.model_validate(state["interpretation"]) if state["interpretation"] else None
+        result = Interpretation.model_validate(state["interpretation"]) if state.get("interpretation") else None
+        sections = state.get("sections", [])
         proposal = build_proposal(state["report"], state["context"], result,
                                   signals=state["safety_review"], safety_evidence=state.get("safety_evidence"),
-                                  model_error=state.get("model_error", ""), sections=state["sections"])
-        proposal["retrieval"]["section_ids"] = [section["id"] for section in state["sections"]]
+                                  model_error=state.get("model_error", ""), sections=sections,
+                                  spam_evidence=state.get("spam_evidence"))
+        proposal["retrieval"]["section_ids"] = [section["id"] for section in sections]
         return {"proposal": dump_proposal(proposal)}
 
     def draft_reply(state: State, runtime: Runtime[Context]):
@@ -403,9 +403,8 @@ def build_graph():
 
     flow = StateGraph(State, context_schema=Context)
     flow.add_node("load_report", load_report)
-    flow.add_node("safety_gate", safety_gate)
+    flow.add_node("begin_interpretation", begin_interpretation)
     flow.add_node("load_context", load_context)
-    flow.add_node("urgent", urgent)
     flow.add_node("check_safety", check_safety)
     flow.add_node("interpret", interpret, retry_policy=RetryPolicy(
         initial_interval=0.3, max_attempts=MAX_ATTEMPTS, jitter=False, retry_on=transient_error))
@@ -416,13 +415,14 @@ def build_graph():
     flow.add_node("await_review", await_review)
     flow.add_node("apply_decision", apply_decision, destinations=("await_review", END))
     flow.add_edge(START, "load_report")
-    flow.add_conditional_edges("load_report", lambda state: "await_review" if state.get("existing") else "safety_gate",
-                               ["await_review", "safety_gate"])
-    flow.add_edge("safety_gate", "load_context")
-    flow.add_conditional_edges("load_context", lambda state: "urgent" if state["signals"] else ["interpret", "check_safety"],
-                               ["urgent", "interpret", "check_safety"])
-    flow.add_edge("urgent", "publish")
-    flow.add_edge(["interpret", "check_safety"], "retrieve_handbook")
+    flow.add_conditional_edges("load_report", lambda state: "await_review" if state.get("existing") else "load_context",
+                               ["await_review", "load_context"])
+    flow.add_edge("load_context", "check_safety")
+    flow.add_conditional_edges("check_safety",
+                               lambda state: "apply_policy" if state["safety_review"] or state.get("spam_evidence")
+                               else "begin_interpretation", ["apply_policy", "begin_interpretation"])
+    flow.add_edge("begin_interpretation", "interpret")
+    flow.add_edge("interpret", "retrieve_handbook")
     flow.add_edge("retrieve_handbook", "apply_policy")
     flow.add_edge("apply_policy", "draft_reply")
     flow.add_edge("draft_reply", "publish")

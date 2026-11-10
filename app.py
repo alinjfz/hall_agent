@@ -32,10 +32,11 @@ HANDOFF_LABELS = {
     "plumbing_question": "Ask about leak severity",
     "access_question": "Ask about current access", "power_question": "Ask about outage scope",
     "split": "Split into separate reports", "answer": "Answer from the handbook", "manual": "Manual review",
+    "spam": "Spam",
 }
 BADGE_COLORS = {"Handled": "green", "Handed over": "green", "Approval needed": "orange", "Draft ready": "blue",
                 "Clarification": "violet", "Split suggested": "violet", "Manual review": "blue",
-                "Triage failed": "red", "Emergency": "red", "Urgent": "orange"}
+                "Triage failed": "red", "Emergency": "red", "Urgent": "orange", "Spam": "gray"}
 POLICY_TITLES = {
     "escalation": "An open repair is overdue",
     "lighting": "A light stops working",
@@ -56,7 +57,7 @@ OUTCOMES = {
     "created_job": "Repair job created", "escalated": "Repair escalated",
     "split_report": "Report split", "draft": "Reply draft marked handled",
     "manual": "Manual review marked handled", "answer": "Handbook answer marked handled",
-    "rejected": "Proposal rejected",
+    "rejected": "Proposal rejected", "spam": "Report marked as spam",
     "technician_handoff": "Handed over to technicians",
 }
 provider = configured_provider()
@@ -107,7 +108,7 @@ def status(report):
         "escalate": "Approval needed", "create": "Approval needed", "draft": "Draft ready",
         "job_question": "Clarification", "lighting_question": "Clarification",
         "plumbing_question": "Clarification", "access_question": "Clarification", "power_question": "Clarification",
-        "split": "Split suggested", "answer": "Draft ready", "manual": "Manual review",
+        "split": "Split suggested", "answer": "Draft ready", "manual": "Manual review", "spam": "Spam",
     }[report["proposal"]["kind"]]
 
 
@@ -206,6 +207,9 @@ def show_review(report, reports):
             st.text(f"Resident asked · {proposal['evidence']}")
             if sources := proposal.get("reply_sources"):
                 st.caption("Cited handbook sections · " + ", ".join(sources))
+        elif kind == "spam":
+            st.write(proposal["reason"])
+            st.text(f"Report evidence · {proposal['evidence']}")
         elif kind == "split":
             st.markdown("#### Separate the reported issues")
             st.caption(f"Confirm each issue belongs at {report['location']}. Each will go through its own review.")
@@ -284,7 +288,7 @@ def show_review(report, reports):
                 if st.button("Unable to confirm"):
                     change(None)
             else:
-                label = {"escalate": "Approve escalation", "create": "Approve new job",
+                label = {"escalate": "Approve escalation", "create": "Approve new job", "spam": "Confirm spam",
                          "split": "Confirm split"}.get(kind, "Mark report as handled")
                 approve = st.button(label, type="primary", icon=":material/check:",
                                     disabled=kind == "create" and has_edits)

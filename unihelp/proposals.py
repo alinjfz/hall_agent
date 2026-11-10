@@ -82,6 +82,12 @@ class ManualProposal(BaseProposal):
     possible_duplicates: list[dict] = Field(default_factory=list)
 
 
+class SpamProposal(BaseProposal):
+    kind: Literal["spam"] = "spam"
+    reason: str
+    evidence: str
+
+
 class ChaseProposal(BaseProposal):
     kind: Literal["draft", "escalate"]
     job: Job
@@ -136,7 +142,8 @@ class SplitProposal(BaseProposal):
 
 
 Proposal = Annotated[
-    ManualProposal | ChaseProposal | RepairProposal | AnswerProposal | JobQuestion | RepairQuestion | SafetyQuestion | SplitProposal,
+    ManualProposal | SpamProposal | ChaseProposal | RepairProposal | AnswerProposal | JobQuestion | RepairQuestion
+    | SafetyQuestion | SplitProposal,
     Field(discriminator="kind"),
 ]
 proposal_adapter = TypeAdapter(Proposal)

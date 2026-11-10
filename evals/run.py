@@ -316,6 +316,9 @@ def main():
         os.environ["UNIHELP_MODEL"] = args.model
     provider = configured_provider()
     supports_deadlines = "deadlines" in inspect.signature(triage).parameters
+    vertex_eval = provider == "vertex" and supports_deadlines
+    if vertex_eval and not os.getenv("UNIHELP_VERTEX_REQUEST_INTERVAL"):
+        os.environ["UNIHELP_VERTEX_REQUEST_INTERVAL"] = "2"
     if args.deadlines and (not supports_deadlines or min(args.deadlines) <= 0):
         parser.error("--deadlines requires the current graph and three positive budgets.")
     deadlines = None
@@ -326,6 +329,12 @@ def main():
     deadline_metadata = asdict(deadlines) if deadlines is not None else None
     if issue := setup_issue(provider):
         parser.error(issue)
+    vertex_metadata = {}
+    if vertex_eval:
+        from unihelp.models import vertex_rate_limits, vertex_request_interval
+
+        vertex_metadata["vertex_request_interval_seconds"] = vertex_request_interval()
+        initial_rate_limits = vertex_rate_limits()
     hosted = args.langsmith == "hosted"
     if args.sync_only and (not hosted or args.case):
         parser.error("--sync-only requires --langsmith hosted and the full dataset.")
@@ -399,7 +408,8 @@ def main():
         experiment_prefix=f"unihelp-{args.suite}", num_repetitions=REPETITIONS, max_concurrency=args.concurrency,
         upload_results=hosted, blocking=False, metadata={"model": agent, "provider": provider, "passes": args.passes,
                                          "dataset_version": version, "dataset_sha256": fingerprint,
-                                         "guidance_examples": len(guidance), "deadline_seconds": deadline_metadata},
+                                         "guidance_examples": len(guidance), "deadline_seconds": deadline_metadata,
+                                         **vertex_metadata},
     )
     rows = []
     partial_path = args.output.with_suffix(".partial.jsonl") if args.output else None
@@ -500,7 +510,10 @@ def main():
                "embedding_model": os.getenv("UNIHELP_EMBEDDING_MODEL") or None,
                "retrieval_recall_at_3_by_origin": {origin: {"mean": mean(scores), "trials": len(scores)}
                                                    for origin, scores in sorted(recall_by_origin.items())},
-               "results": rows}
+               "results": rows, **vertex_metadata}
+    if vertex_eval:
+        summary["vertex_http_429s"] = vertex_rate_limits() - initial_rate_limits
+        print(f"Vertex HTTP 429 responses: {summary['vertex_http_429s']}")
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n")

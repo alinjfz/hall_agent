@@ -11,6 +11,44 @@ from unihelp.store import ReviewError, Store
 from unihelp.workflow import review, triage
 
 
+def test_vertex_rate_limit_cooldown_applies_to_other_requests(monkeypatch):
+    from types import SimpleNamespace
+
+    from unihelp import models
+
+    now = 0.0
+    attempts = []
+
+    def sleep(seconds):
+        nonlocal now
+        now += seconds
+
+    class RateLimit(Exception):
+        code = 429
+        response = SimpleNamespace(headers={"retry-after": "5"})
+
+    def generate(*args, **kwargs):
+        attempts.append(now)
+        if len(attempts) == 1:
+            raise RateLimit
+        return "ok"
+
+    monkeypatch.setenv("UNIHELP_VERTEX_REQUEST_INTERVAL", "2")
+    monkeypatch.setattr(models, "_vertex_next_request", 0.0)
+    monkeypatch.setattr(models, "_vertex_rate_limits", 0)
+    monkeypatch.setattr(models, "monotonic", lambda: now)
+    monkeypatch.setattr(models, "sleep", sleep)
+    monkeypatch.setattr(models.ChatGoogleGenerativeAI, "_generate", generate)
+
+    with pytest.raises(RateLimit):
+        models.VertexChatModel.model_construct(timeout=4)._generate([])
+    assert models.vertex_rate_limits() == 1
+    peer = models.VertexChatModel.model_construct(timeout=10)
+    assert peer._generate([]) == "ok"
+    assert peer._generate([]) == "ok"
+    assert attempts == [0.0, 5.0, 7.0]
+
+
 def test_private_lighting_fault_is_not_a_dark_shared_route(tmp_path):
     from tests.scripted_model import scripted
 
@@ -43,18 +81,61 @@ def test_lost_key_with_unknown_access_prompts_for_clarification(tmp_path):
     assert triage(store, report_id, model=model)["kind"] == "access_question"
 
 
-def test_emergency_is_ready_at_intake_and_records_only_one_reply(tmp_path):
+@pytest.mark.parametrize(("message", "hazard", "evidence"), [
+    ("I smell gas in the kitchen.", "gas", "I smell gas in the kitchen."),
+    ("there is a fire. i'm not joking!", "fire", "there is a fire."),
+])
+def test_model_confirms_emergency_and_records_only_one_reply(tmp_path, message, hazard, evidence):
+    from tests.scripted_model import scripted
+
     store = Store(tmp_path / "workspace.sqlite3")
     store.seed(samples=False)
-    report_id = store.add_report("Flat 1", "Emergency", "I smell gas in the kitchen.")
+    report_id = store.add_report("Flat 1", "Emergency", message)
     report = store.report(report_id)
-    assert report["proposal"]["urgency"] == "emergency"
-    assert not store.claim_triage()
+    assert report["proposal"] is None
+    assert not store.activity(report_id)
+    model = scripted("Flat 1", "heating", {"intent": "manual"},
+                     safety={"assessment": "current", "hazard": hazard, "evidence": evidence})
+    assert triage(store, report_id, model=model)["urgency"] == "emergency"
+    report = store.report(report_id)
     assert store.jobs() == []
     assert [row["event"] for row in store.activity(report_id)] == ["emergency_reply", "proposal_ready"]
     result = review(store, report_id, report["version"], "acknowledge", reviewer_id="duty-team")
     assert result["reviewer_id"] == "duty-team"
     assert sum(row["event"] == "emergency_reply" for row in store.activity(report_id)) == 1
+
+
+@pytest.mark.parametrize(("message", "evidence"), [
+    ("everything is burning! sorry i was joking", "sorry i was joking"),
+    ("everything is burning. i was joking!", "i was joking!"),
+    ("i am not being serious there is a fire", "i am not being serious"),
+])
+def test_explicitly_retracted_fire_claim_is_spam(tmp_path, message, evidence):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 1", "Report", message)
+    model = scripted("Flat 1", "heating", {"intent": "manual"},
+                     safety={"assessment": "spam", "hazard": None, "evidence": evidence})
+    proposal = triage(store, report_id, model=model)
+    assert proposal["kind"] == "spam"
+    assert proposal.get("urgency") is None and not proposal.get("reply")
+    assert [row["event"] for row in store.activity(report_id)] == ["proposal_ready"]
+    assert review(store, report_id, store.report(report_id)["version"], "acknowledge")["action"] == "spam"
+
+
+def test_spam_label_cannot_hide_later_hazard_or_post_automatic_reply(tmp_path):
+    from tests.scripted_model import scripted
+
+    store = Store(tmp_path / "workspace.sqlite3")
+    store.seed(samples=False)
+    report_id = store.add_report("Flat 1", "Report", "I was joking. The kitchen bin is on fire now.")
+    model = scripted("Flat 1", "heating", {"intent": "manual"},
+                     safety={"assessment": "spam", "hazard": None, "evidence": "I was joking."})
+    proposal = triage(store, report_id, model=model)
+    assert proposal["urgency"] == "emergency" and "unverified_safety" in proposal["signals"]
+    assert [row["event"] for row in store.activity(report_id)] == ["proposal_ready"]
 
 
 @pytest.mark.parametrize("check", [
@@ -84,7 +165,7 @@ def test_unverified_safety_goes_to_urgent_review(tmp_path, check):
     proposal = triage(store, report_id, model=Model())
     assert proposal["kind"] == "manual" and proposal["urgency"] == "urgent"
     assert proposal["signals"] == ["unverified_safety"]
-    assert store.report(report_id)["triage_attempts"] == 1
+    assert store.report(report_id)["triage_attempts"] == 0
     assert not store.jobs()
 
 

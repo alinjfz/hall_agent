@@ -1,10 +1,12 @@
 import logging
 import os
 from atexit import register
+from email.utils import parsedate_to_datetime
 from functools import lru_cache
+from math import isfinite
 from random import uniform
 from threading import BoundedSemaphore, Lock
-from time import monotonic, sleep
+from time import monotonic, sleep, time
 
 import httpx
 from langchain_core.runnables import RunnableLambda
@@ -15,16 +17,31 @@ from openai import APIConnectionError
 DEFAULTS = {"openai": "gpt-6-luna", "vertex": "gemini-3.1-flash-lite", "lmstudio": "qwen/qwen3.5-9b"}
 VERTEX_REQUEST_SLOTS = BoundedSemaphore(2)
 VERTEX_MAX_ATTEMPTS = 3
-VERTEX_REQUEST_INTERVAL = 1.0
 _vertex_pacing_lock = Lock()
 _vertex_next_request = 0.0
+_vertex_rate_limits = 0
 
 
 class TransientModelError(RuntimeError):
     pass
 
 
-def _wait_for_vertex_slot(deadline):
+def vertex_request_interval():
+    try:
+        interval = float(os.getenv("UNIHELP_VERTEX_REQUEST_INTERVAL") or "1")
+    except ValueError:
+        interval = 0
+    if not isfinite(interval) or interval <= 0:
+        raise ValueError("UNIHELP_VERTEX_REQUEST_INTERVAL must be a positive number of seconds.")
+    return interval
+
+
+def vertex_rate_limits():
+    with _vertex_pacing_lock:
+        return _vertex_rate_limits
+
+
+def _wait_for_vertex_slot(deadline, interval):
     global _vertex_next_request
     while True:
         with _vertex_pacing_lock:
@@ -33,9 +50,32 @@ def _wait_for_vertex_slot(deadline):
                 raise TimeoutError("Vertex request budget exhausted while pacing")
             delay = _vertex_next_request - now
             if delay <= 0:
-                _vertex_next_request = now + VERTEX_REQUEST_INTERVAL
+                _vertex_next_request = now + interval
                 return
         sleep(delay)
+
+
+def _vertex_cooldown(exc, delay):
+    global _vertex_next_request, _vertex_rate_limits
+    response = getattr(exc, "response", None)
+    if response is None:
+        response = getattr(exc.__cause__, "response", None)
+    retry_after = getattr(response, "headers", {}).get("retry-after")
+    if retry_after:
+        try:
+            seconds = float(retry_after)
+        except ValueError:
+            try:
+                seconds = parsedate_to_datetime(retry_after).timestamp() - time()
+            except (ValueError, OverflowError):
+                seconds = 0
+        if isfinite(seconds):
+            delay = max(delay, seconds)
+    with _vertex_pacing_lock:
+        _vertex_rate_limits += 1
+        until = monotonic() + delay
+        _vertex_next_request = max(_vertex_next_request, until)
+        return _vertex_next_request
 
 
 class VertexChatModel(ChatGoogleGenerativeAI):
@@ -43,18 +83,24 @@ class VertexChatModel(ChatGoogleGenerativeAI):
         budget = kwargs.pop("timeout", None) or self.timeout or 20
         kwargs["max_retries"] = 1
         deadline = monotonic() + budget
+        interval = vertex_request_interval()
         for attempt in range(VERTEX_MAX_ATTEMPTS):
             if not VERTEX_REQUEST_SLOTS.acquire(timeout=max(0, deadline - monotonic())):
                 raise TimeoutError("Timed out waiting for a Vertex request slot")
             try:
-                _wait_for_vertex_slot(deadline)
+                _wait_for_vertex_slot(deadline, interval)
                 remaining = deadline - monotonic()
                 if remaining <= 0:
                     raise TimeoutError("Vertex request budget exhausted")
                 return super()._generate(messages, stop=stop, run_manager=run_manager, timeout=remaining, **kwargs)
             except Exception as exc:
                 status = getattr(exc, "code", None) or getattr(exc.__cause__, "code", None)
-                retryable = status in {408, 429, 500, 502, 503, 504} or isinstance(exc, httpx.TransportError)
+                if status == 429:
+                    retry_at = _vertex_cooldown(exc, 2 ** (attempt + 1) + uniform(0, 0.5))
+                    if attempt + 1 == VERTEX_MAX_ATTEMPTS or retry_at >= deadline:
+                        raise
+                    continue
+                retryable = status in {408, 500, 502, 503, 504} or isinstance(exc, httpx.TransportError)
                 if not retryable or attempt + 1 == VERTEX_MAX_ATTEMPTS:
                     raise
                 delay = 0.5 * 2**attempt + uniform(0, 0.5)
@@ -92,7 +138,13 @@ def setup_issue(provider):
     if provider == "openai":
         return None if os.getenv("OPENAI_API_KEY") else "Set OPENAI_API_KEY to start automatic triage."
     if provider == "vertex":
-        return None if os.getenv("GOOGLE_CLOUD_PROJECT") else "Set GOOGLE_CLOUD_PROJECT and configure Google ADC."
+        if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+            return "Set GOOGLE_CLOUD_PROJECT and configure Google ADC."
+        try:
+            vertex_request_interval()
+        except ValueError as exc:
+            return str(exc)
+        return None
     if provider == "lmstudio":
         return None
     return "Set UNIHELP_PROVIDER to lmstudio, openai, or vertex."

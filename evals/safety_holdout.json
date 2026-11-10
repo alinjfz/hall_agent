@@ -1,5 +1,67 @@
 [
   {
+    "id": "fire-claim-retracted-after-period",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "everything is burning. i was joking!",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null,
+      "route": "spam"
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "fire-claim-affirmed-not-joking",
+    "slice": "hazard",
+    "inputs": {
+      "message": "there is a fire. i'm not joking!",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": "emergency",
+      "route": "manual"
+    },
+    "policy_topics": [
+      "fire"
+    ]
+  },
+  {
+    "id": "fire-claim-prefaced-not-serious",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "i am not being serious there is a fire",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null,
+      "route": "spam"
+    },
+    "policy_topics": []
+  },
+  {
+    "id": "fire-claim-retracted-as-joke",
+    "slice": "lookalike",
+    "inputs": {
+      "message": "everything is burning! sorry i was joking",
+      "location": "Juniper Court / Flat 37",
+      "open_jobs": [],
+      "clock": "2026-11-08T12:00:00+00:00"
+    },
+    "outputs": {
+      "urgency": null,
+      "route": "spam"
+    },
+    "policy_topics": []
+  },
+  {
     "id": "fire-01",
     "slice": "hazard",
     "inputs": {

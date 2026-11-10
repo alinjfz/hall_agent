@@ -143,7 +143,9 @@ def test_duplicate_history_and_model_safety():
         assert triage(store, report_id, model=model)["kind"] == "manual"
 
         report_id = store.add_report("Flat 4", "Two issues", "The radiator is still cold. The socket is sparking.")
-        model = ScriptedModel(messages=iter([]))
+        model = scripted("Flat 4", "heating", {"intent": "manual"}, safety={
+            "assessment": "current", "hazard": "building_hazard", "evidence": "The socket is sparking.",
+        })
         urgent = triage(store, report_id, model=model)
         assert urgent["urgency"] == "urgent"
         assert urgent["followup_suggestions"] == ["The radiator is still cold."]

@@ -268,12 +268,13 @@ def context_issue(context):
     return None
 
 
-def build_proposal(report, context, interpretation, *, signals=None, safety_evidence=None, model_error="",
-                   sections=None):
+def build_proposal(report, context, interpretation, *, signals=(), safety_evidence=None, model_error="",
+                   sections=None, spam_evidence=None):
     policies = context["policies"]
-    if signals is None:
-        signals = safety_signals(report["message"])
     proposal = urgent_proposal(report, policies, context["jobs"], set(signals), evidence=safety_evidence)
+    if proposal is None and spam_evidence:
+        proposal = {"kind": "spam", "reason": "The author explicitly says the claim is a joke or is not serious.",
+                    "evidence": spam_evidence}
     if proposal is None:
         if issue := context_issue(context):
             proposal = manual(issue)

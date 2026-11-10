@@ -9,9 +9,8 @@ from langsmith import traceable, tracing_context
 from langsmith.utils import get_tracer_project, tracing_is_enabled
 
 from unihelp.context import search_rules
-from unihelp.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, retrieve_context, revision_thread
+from unihelp.graph import GRAPH_VERSION, PROMPT_HASH, Context, ModelDeadlines, graph_for, revision_thread
 from unihelp.models import configured_provider, triage_model
-from unihelp.policy import build_proposal
 from unihelp.proposals import parse_proposal
 from unihelp.store import ReviewError
 from unihelp.tracing import trace_client, trace_project_id
